@@ -122,6 +122,7 @@ mod tests {
             kind: HistoryKind::Dictation,
             raw_text: format!("raw {text}"),
             final_text: text.into(),
+            tidy: None,
             application: None,
             processing: None,
             audio_ms: 900,

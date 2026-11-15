@@ -120,9 +120,11 @@ pub(crate) fn uses_page(settings: &DictationProcessingSettings) -> bool {
 }
 
 /// The history entry for one pasted dictation.
+#[allow(clippy::too_many_arguments)]
 pub fn history_draft(
     raw_text: String,
     processed: &Processed,
+    tidy: Option<crate::history::HistoryTidy>,
     application: Option<String>,
     audio_ms: u64,
     inference_ms: u64,
@@ -133,6 +135,7 @@ pub fn history_draft(
         kind: crate::history::HistoryKind::Dictation,
         raw_text,
         final_text: processed.text.clone(),
+        tidy,
         application,
         processing: processed.observation.as_ref().map(|processing| {
             crate::history::HistoryProcessing {

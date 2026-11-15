@@ -110,6 +110,14 @@ impl HistoryKind {
 pub type HistoryProcessing = crate::desktop::events::DictationProcessing;
 
 /// One retained successful result.
+/// The standalone 文字整理 step: the text it was given and the service's
+/// answer. Both are kept so History can show what the tidy pass changed.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct HistoryTidy {
+    pub before: String,
+    pub after: String,
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct HistoryEntry {
     pub id: u64,
@@ -119,6 +127,9 @@ pub struct HistoryEntry {
     pub raw_text: String,
     /// Text that was actually inserted.
     pub final_text: String,
+    /// The 文字整理 pass's input and output, when it ran.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tidy: Option<HistoryTidy>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub application: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -162,6 +173,10 @@ impl HistoryEntry {
         self.raw_text.len()
             + self.final_text.len()
             + self
+                .tidy
+                .as_ref()
+                .map_or(0, |tidy| tidy.before.len() + tidy.after.len())
+            + self
                 .versions
                 .iter()
                 .map(HistoryVersion::text_bytes)
@@ -175,6 +190,10 @@ impl HistoryEntry {
         let mut matches_field = |field: &str| field_contains(field, needle, scratch);
         (self.raw_text != self.final_text && matches_field(&self.raw_text))
             || matches_field(&self.final_text)
+            || self
+                .tidy
+                .as_ref()
+                .is_some_and(|tidy| matches_field(&tidy.before))
             || self.application.as_deref().is_some_and(&mut matches_field)
             || self.model.as_deref().is_some_and(&mut matches_field)
             || self
@@ -205,6 +224,8 @@ pub struct HistoryDraft {
     pub kind: HistoryKind,
     pub raw_text: String,
     pub final_text: String,
+    /// The 文字整理 pass's input and output, when it ran.
+    pub tidy: Option<HistoryTidy>,
     pub application: Option<String>,
     pub processing: Option<HistoryProcessing>,
     pub audio_ms: u64,
@@ -413,6 +434,10 @@ impl HistoryStore {
             kind: draft.kind,
             raw_text: truncated(&draft.raw_text, MAX_TEXT_BYTES),
             final_text: truncated(&draft.final_text, MAX_TEXT_BYTES),
+            tidy: draft.tidy.map(|tidy| HistoryTidy {
+                before: truncated(&tidy.before, MAX_TEXT_BYTES),
+                after: truncated(&tidy.after, MAX_TEXT_BYTES),
+            }),
             application: draft
                 .application
                 .map(|application| truncated(&application, MAX_LABEL_BYTES)),
@@ -866,6 +891,7 @@ mod tests {
             kind: HistoryKind::Dictation,
             raw_text: format!("raw {text}"),
             final_text: text.to_string(),
+            tidy: None,
             application: Some("Zed".into()),
             processing: Some(HistoryProcessing {
                 profile: "Messages".into(),
@@ -878,6 +904,31 @@ mod tests {
             recording: None,
             model: None,
         }
+    }
+
+    #[test]
+    fn a_tidy_pass_keeps_its_before_and_after_text() {
+        let path = temp_path("tidy");
+        let mut store = HistoryStore::open(path.clone(), HistoryRetention::Week, 0);
+        let mut entry = draft("整理后的文字");
+        entry.tidy = Some(HistoryTidy {
+            before: "整理前的文字".into(),
+            after: "整理后的文字".into(),
+        });
+        let id = store.record(entry, 0).unwrap().unwrap();
+        let saved = store.entry(id).unwrap();
+        let tidy = saved.tidy.as_ref().expect("the tidy pass is kept");
+        assert_eq!(tidy.before, "整理前的文字");
+        assert_eq!(tidy.after, "整理后的文字");
+        // It survives a reload from disk.
+        let reopened = HistoryStore::open(path, HistoryRetention::Week, 3_000);
+        let tidy = reopened
+            .entry(id)
+            .unwrap()
+            .tidy
+            .as_ref()
+            .expect("the tidy pass reloads");
+        assert_eq!(tidy.after, "整理后的文字");
     }
 
     fn recorded(text: &str) -> HistoryDraft {

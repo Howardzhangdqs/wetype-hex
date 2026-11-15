@@ -122,6 +122,7 @@ fn history_stats_parse_sum_retained_entries_and_need_the_labs_toggle() {
         kind: HistoryKind::Dictation,
         raw_text: raw.into(),
         final_text: final_text.into(),
+        tidy: None,
         application: Some("Zed".into()),
         processing: None,
         audio_ms: 6_000,
@@ -170,6 +171,7 @@ fn history_search_ranks_fuzzy_stemmed_matches_within_retention() {
         id: 5,
         timestamp_ms: 1_792_650_000_000,
         final_text: "Board games tonight.".into(),
+        tidy: None,
         ..entries[2].clone()
     });
     let output = history_output(
@@ -227,6 +229,7 @@ fn history_search_counts_raw_and_final_text_as_one_document() {
         id,
         timestamp_ms: NOW - id * 1_000,
         final_text: final_text.into(),
+        tidy: None,
         raw_text: raw_text.into(),
         ..template.clone()
     };

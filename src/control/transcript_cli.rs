@@ -174,6 +174,9 @@ struct HistoryRow<'a> {
     final_text: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     raw_text: Option<&'a str>,
+    /// The 文字整理 pass's input and output, when it ran.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tidy: Option<&'a crate::history::HistoryTidy>,
     #[serde(skip_serializing_if = "Option::is_none")]
     score: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -246,6 +249,7 @@ fn history_output<'a>(
             kind: entry.kind,
             final_text: &entry.final_text,
             raw_text: args.raw.then_some(entry.raw_text.as_str()),
+            tidy: entry.tidy.as_ref(),
             score: hit.as_ref().map(|hit| (hit.score * 100.0).round() / 100.0),
             snippet: hit.map(|hit| hit.snippet),
             recording: recordings

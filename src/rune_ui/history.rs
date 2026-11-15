@@ -275,6 +275,7 @@ impl HistoryPane {
                     kind,
                     raw_text: raw.into(),
                     final_text: final_text.into(),
+                    tidy: None,
                     application: app.map(str::to_owned),
                     processing: None,
                     audio_ms: 4200,
@@ -1020,6 +1021,30 @@ fn detail(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
             .color(p.text())
             .wrap(),
     );
+    if let Some(tidy) = &entry.tidy {
+        body = body.child(
+            col()
+                .key("tidy")
+                .gap(6.0)
+                .child(section_label(p, "label", tr("Automatic tidy")))
+                .child(section_label(p, "tidy-before-label", tr("Before tidying")))
+                .child(
+                    text(tidy.before.clone())
+                        .key("tidy-before")
+                        .font(p.k.ty.body)
+                        .color(p.muted())
+                        .wrap(),
+                )
+                .child(section_label(p, "tidy-after-label", tr("After tidying")))
+                .child(
+                    text(tidy.after.clone())
+                        .key("tidy-after")
+                        .font(p.k.ty.body)
+                        .color(p.text())
+                        .wrap(),
+                ),
+        );
+    }
     if entry.raw_text.trim() != entry.final_text.trim() {
         body = body.child(
             col()

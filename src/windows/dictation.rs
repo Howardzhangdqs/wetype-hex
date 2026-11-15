@@ -1166,6 +1166,7 @@ fn process_dictation_job(
             let mut draft = crate::dictation::modes::history_draft(
                 raw_text,
                 &processed,
+                None,
                 application.clone(),
                 job.audio_ms,
                 inference_ms,

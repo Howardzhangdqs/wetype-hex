@@ -103,9 +103,17 @@ impl DictationOutput {
         // the last step, so the paste, live typing, Paste last dictation, and
         // History all see the same tidied text. A failure pastes what was
         // heard rather than losing a dictation to the network.
+        let mut tidy_draft = None;
         if !flavour.raw() && tidy_dictation_enabled() {
-            match crate::wetype::tidy::tidy(&processed.text) {
-                Ok(Some(tidied)) => processed.text = tidied,
+            let before = processed.text.clone();
+            match crate::wetype::tidy::tidy(&before) {
+                Ok(Some(tidied)) => {
+                    tidy_draft = Some(crate::history::HistoryTidy {
+                        before,
+                        after: tidied.clone(),
+                    });
+                    processed.text = tidied;
+                }
                 Ok(None) => {}
                 Err(error) => {
                     tracing::warn!(%error, "could not tidy the dictation; pasting it as heard");
@@ -154,6 +162,7 @@ impl DictationOutput {
             let mut draft = crate::dictation::modes::history_draft(
                 raw_text,
                 &processed,
+                tidy_draft,
                 context.application,
                 audio_ms,
                 inference_ms,
