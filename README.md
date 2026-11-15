@@ -36,7 +36,18 @@ runtime is needed at use time.
 
 ```sh
 cargo build --release --bin hex
+
+./target/release/hex start          # open the window (starts it if needed)
+./target/release/hex                # same, when it is not running
 ./target/release/hex transcribe recording.m4a
+./target/release/hex quit
+```
+
+Add it to the application menu (copies the release binary to
+`~/.local/bin/wetype-hex` and writes a launcher):
+
+```sh
+./packaging/linux/install-desktop-entry.sh
 ```
 
 Ubuntu/Debian build dependencies: Rust 1.85+, `cmake`, `clang`, and the
