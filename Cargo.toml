@@ -87,6 +87,8 @@ rubato = "5.0.1"
 same-file = "1.0.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
+# Character-level diffs of a dictation's 文字整理 before/after, in History.
+similar = "2"
 # WeChat Input Method ASR (`src/wetype`): the cloud protocol Hex uses instead
 # of local speech models in this fork.
 aes = "0.8"

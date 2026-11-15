@@ -892,6 +892,7 @@ const TRANSLATIONS: &[(&str, &str)] = &[
     ("Cloud service", "Serviço na nuvem"),
     ("Tidy dictation", "Organizar o ditado"),
     ("Automatic tidy", "Organização automática"),
+    ("Tidying changed nothing", "A organização não alterou nada"),
     ("Before tidying", "Antes de organizar"),
     ("After tidying", "Depois de organizar"),
     ("Use WeChat's 文字整理 model to structure each dictation before pasting", "Usa o modelo 文字整理 do WeChat para estruturar cada ditado antes de colar"),
