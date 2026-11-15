@@ -887,6 +887,8 @@ const TRANSLATIONS: &[(&str, &str)] = &[
     ("Updated by your package manager", "Mis à jour par votre gestionnaire de paquets"),
     ("Local", "Local"),
     ("Cloud service", "Service cloud"),
+    ("Tidy dictation", "Mettre en forme la dictée"),
+    ("Use WeChat's 文字整理 model to structure each dictation before pasting", "Utilise le modèle 文字整理 de WeChat pour structurer chaque dictée avant de la coller"),
     ("Chinese dictation through WeChat Input Method's cloud service", "Dictée en chinois via le service cloud de WeChat Input Method"),
     ("Test", "Test"),
     ("Local build · updates off", "Build local · mises à jour désactivées"),

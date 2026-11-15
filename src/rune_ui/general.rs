@@ -207,6 +207,23 @@ pub(super) fn basics(ui: &Ui, p: Paint, layer: &mut Vec<El>, query: &str) -> Opt
     if let Some(row) = language_row(ui, p, layer) {
         rows.push(tr("Language"), row);
     }
+    let tidy_note = tr("Use WeChat's 文字整理 model to structure each dictation before pasting");
+    rows.push_described(
+        tr("Tidy dictation"),
+        Some(tidy_note),
+        icon_toggle_row(
+            p,
+            "wetype-tidy",
+            &ZAP,
+            tr("Tidy dictation"),
+            Some(tidy_note),
+            ui.settings.wetype_tidy,
+            |ui: &mut Ui| {
+                let tidy = !ui.settings.wetype_tidy;
+                ui.update(|settings| settings.wetype_tidy = tidy);
+            },
+        ),
+    );
     let vocabulary_note = super::vocabulary::unused_note(ui);
     rows.push_described(
         tr("Vocabulary"),

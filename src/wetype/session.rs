@@ -222,11 +222,13 @@ impl Client {
         self.transcribe(&pcm, on_partial)
     }
 
-    /// Run the standalone text-polish model over `text`.
+    /// Run the standalone text-polish model (文字整理) over `text`.
     ///
-    /// Returns the rearranged text, which may equal the input when there is
-    /// nothing to tidy. An empty result means the model produced no answer.
-    pub fn arrange(&mut self, text: &str) -> Result<String> {
+    /// `has_asr` marks the source as recognition output, which is the case
+    /// for a dictation. Returns the rearranged text, which may equal the input
+    /// when there is nothing to tidy. An empty result means the model produced
+    /// no answer.
+    pub fn arrange(&mut self, text: &str, has_asr: bool) -> Result<String> {
         if text.trim().is_empty() {
             return Err(Error::Protocol("text to arrange is empty".into()));
         }
@@ -234,7 +236,7 @@ impl Client {
         let mut req = pb::Writer::new();
         req.str_field(1, text); // source_text_list
         req.varint_field(2, SCRIPT_SIMPLIFIED); // script_type
-        req.varint_field(3, 0); // has_asr
+        req.varint_field(3, u64::from(has_asr)); // has_asr
         req.varint_field(4, 0); // source_type: none
         req.str_field(5, APP_NAME); // app_name
         req.varint_field(6, 0); // app_scene: unknown

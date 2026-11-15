@@ -20,6 +20,12 @@ runtime is needed at use time.
 - The macOS and Windows code paths still compile, but this fork's backend has
   only been exercised on Linux.
 - The service recognizes **Mandarin Chinese** (with mixed English words).
+- **Automatic 文字整理**: each Linux dictation is run through the service's
+  text-tidy model after recognition and before it is pasted, so spoken lists
+  and plans come out structured. It is on by default; turn it off with
+  `hex settings set wetype_tidy off` (General › Tidy dictation). A failed tidy
+  pastes the untidied text. File transcription and meetings keep their raw
+  recognition text.
 - No word timestamps: a timed request gets one segment per clip.
 - **Model downloading is disabled** in this build. The local GGUF catalog and
   its code stay compiled for the rest of Hex (meetings, history, imports), but

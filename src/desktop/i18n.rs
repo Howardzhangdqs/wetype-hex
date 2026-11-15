@@ -1191,6 +1191,8 @@ const TRANSLATIONS: &[(&str, [&str; 6])] = &[
     ("Enable / Disable Hex", ["Włącz / wyłącz Hex", "启用 / 停用 Hex", "Hex を有効 / 無効にする", "Hex aktivieren / deaktivieren", "Activar / desactivar Hex", "Увімкнути / вимкнути Hex"]),
     ("Updated by your package manager", ["Aktualizowany przez menedżer pakietów", "由你的软件包管理器更新", "パッケージマネージャーで更新します", "Wird von deinem Paketmanager aktualisiert", "Se actualiza con tu gestor de paquetes", "Оновлюється через менеджер пакетів"]),
     ("Local", ["Lokalna", "本地", "ローカル", "Lokal", "Local", "Локальна"]),
+    ("Tidy dictation", ["Porządkuj dyktowanie", "自动整理听写", "音声入力を整える", "Diktat aufräumen", "Ordenar el dictado", "Упорядковувати диктування"]),
+    ("Use WeChat's 文字整理 model to structure each dictation before pasting", ["Używaj modelu 文字整理 WeChat do porządkowania każdego dyktowania przed wklejeniem", "粘贴前用微信“文字整理”模型把每次听写整理成结构化文字", "貼り付ける前にWeChatの「文字整理」モデルで各音声入力を整えます", "Strukturiert jedes Diktat vor dem Einfügen mit dem WeChat-Modell „文字整理“", "Usa el modelo 文字整理 de WeChat para estructurar cada dictado antes de pegarlo", "Впорядковує кожне диктування моделлю 文字整理 WeChat перед вставленням"]),
     ("Cloud service", ["Usługa w chmurze", "云服务", "クラウドサービス", "Cloud-Dienst", "Servicio en la nube", "Хмарна служба"]),
     ("Chinese dictation through WeChat Input Method's cloud service", ["Dyktowanie po chińsku przez usługę w chmurze WeChat Input Method", "通过微信输入法云服务进行中文听写", "WeChat入力メソッドのクラウドサービスによる中国語の音声入力", "Chinesisches Diktat über den Cloud-Dienst von WeChat Input Method", "Dictado en chino mediante el servicio en la nube de WeChat Input Method", "Китайське диктування через хмарну службу WeChat Input Method"]),
     ("Test", ["Test", "测试", "テスト", "Test", "Prueba", "Тест"]),

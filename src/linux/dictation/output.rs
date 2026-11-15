@@ -22,6 +22,13 @@ pub(crate) struct DictationOutput {
 /// No paste at all means a printing stop.
 pub(super) type Paste<'a> = &'a mut dyn FnMut(&str, bool, bool) -> Result<()>;
 
+/// Whether this dictation is tidied. Tests answer off unless they ask, so
+/// no unit test reaches the service; the live path reads the saved setting.
+fn tidy_dictation_enabled() -> bool {
+    // Unit tests never reach the service: the live path is e2e only.
+    !cfg!(test) && crate::app_settings::wetype_tidy()
+}
+
 impl DictationOutput {
     pub(crate) fn from_settings(
         settings: &crate::app_settings::AppSettings,
@@ -70,7 +77,7 @@ impl DictationOutput {
             .read()
             .unwrap_or_else(|error| error.into_inner())
             .clone();
-        let processed = if flavour.raw() {
+        let mut processed = if flavour.raw() {
             crate::dictation::processor::Processed::unchanged(raw_text.trim())
         } else {
             modes.process(
@@ -90,6 +97,20 @@ impl DictationOutput {
                 session.cancel();
             }
             return Ok(processed.text);
+        }
+        // WeChat's 文字整理 turns the spoken paragraph into structured text
+        // (lists, headings, grouping) and leaves tidy short text alone. It is
+        // the last step, so the paste, live typing, Paste last dictation, and
+        // History all see the same tidied text. A failure pastes what was
+        // heard rather than losing a dictation to the network.
+        if !flavour.raw() && tidy_dictation_enabled() {
+            match crate::wetype::tidy::tidy(&processed.text) {
+                Ok(Some(tidied)) => processed.text = tidied,
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::warn!(%error, "could not tidy the dictation; pasting it as heard");
+                }
+            }
         }
         // Live typing inserts the final text through the input method; a
         // printed or copy-only dictation clears its preedit and takes the

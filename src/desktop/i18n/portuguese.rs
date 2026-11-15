@@ -890,6 +890,8 @@ const TRANSLATIONS: &[(&str, &str)] = &[
     ("Updated by your package manager", "Atualizado pelo seu gerenciador de pacotes"),
     ("Local", "Local"),
     ("Cloud service", "Serviço na nuvem"),
+    ("Tidy dictation", "Organizar o ditado"),
+    ("Use WeChat's 文字整理 model to structure each dictation before pasting", "Usa o modelo 文字整理 do WeChat para estruturar cada ditado antes de colar"),
     ("Chinese dictation through WeChat Input Method's cloud service", "Ditado em chinês pelo serviço na nuvem do WeChat Input Method"),
     ("Test", "Teste"),
     ("Local build · updates off", "Build local · atualizações desativadas"),

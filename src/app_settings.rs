@@ -50,6 +50,8 @@ pub use screenshots::{
 const DEFAULT_RECORDING_DUCK_VOLUME: f32 = 0.2;
 const DEFAULT_DOUBLE_TAP_LOCK: bool = true;
 
+/// Whether each dictation is run through the cloud 文字整理 model first.
+static WETYPE_TIDY: AtomicBool = AtomicBool::new(true);
 static RECORDING_DUCK_VOLUME: AtomicU32 = AtomicU32::new(DEFAULT_RECORDING_DUCK_VOLUME.to_bits());
 // Until settings load, "While dictating" is its default, not Mute: the
 // hotkey pre-roll depends on it.
@@ -310,6 +312,9 @@ pub struct AppSettings {
     /// Where the speech model runs (Linux and Windows).
     pub transcription_device: TranscriptionDevice,
     pub transcription_recents: Vec<TranscriptionSelection>,
+    /// Run the cloud 文字整理 model over each dictation before it is pasted.
+    /// On by default: this fork exists to get that written form.
+    pub wetype_tidy: bool,
     pub keyboard_model_switching: KeyboardModelSwitching,
     pub dictation_processing: DictationProcessingSettings,
     /// Retired Voice Action settings, kept untouched in `settings.json`.
@@ -451,6 +456,7 @@ impl Default for AppSettings {
             transcription: default_transcription(),
             transcription_device: TranscriptionDevice::Auto,
             transcription_recents: Vec::new(),
+            wetype_tidy: true,
             keyboard_model_switching: KeyboardModelSwitching::default(),
             dictation_processing: DictationProcessingSettings::default(),
             retired_voice_action: None,
@@ -806,6 +812,7 @@ impl AppSettings {
         INDICATOR_POSITION.store(self.indicator_position as u8, Ordering::Relaxed);
         #[cfg(not(target_os = "macos"))]
         crate::transcription::local_transcriber::set_device(self.transcription_device);
+        WETYPE_TIDY.store(self.wetype_tidy, Ordering::Relaxed);
         RECORDING_DUCK_VOLUME.store(self.recording_duck_volume.to_bits(), Ordering::Relaxed);
         RECORDING_AUDIO_BEHAVIOR.store(self.recording_audio_behavior.encoded(), Ordering::Relaxed);
         PAUSE_BROWSER_MEDIA.store(self.pause_browser_media, Ordering::Relaxed);
@@ -1293,6 +1300,11 @@ pub fn transcription_selection() -> (u64, TranscriptionSelection) {
     let state = TRANSCRIPTION_SELECTION.get_or_init(Default::default);
     let state = state.read().unwrap_or_else(|error| error.into_inner());
     (state.revision, state.selection.clone())
+}
+
+/// Whether dictation output is tidied by the service before it is pasted.
+pub fn wetype_tidy() -> bool {
+    WETYPE_TIDY.load(Ordering::Relaxed)
 }
 
 pub fn recording_duck_volume() -> f32 {

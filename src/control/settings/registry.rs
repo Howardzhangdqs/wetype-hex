@@ -251,6 +251,11 @@ pub(super) const KEYS: &[Key] = &[
         "The dictation language",
         MODEL_CHANGE,
     ),
+    key(
+        "wetype_tidy",
+        Kind::Bool,
+        "Tidy each dictation with WeChat's 文字整理 model before pasting",
+    ),
     read_only(
         "transcription_recents",
         Kind::Json,

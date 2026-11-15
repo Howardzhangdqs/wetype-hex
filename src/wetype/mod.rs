@@ -31,6 +31,7 @@ pub(crate) mod opus;
 pub(crate) mod pb;
 pub(crate) mod session;
 pub(crate) mod snappy;
+pub(crate) mod tidy;
 
 // The two public types of the module; a caller may use either.
 #[allow(unused_imports)]

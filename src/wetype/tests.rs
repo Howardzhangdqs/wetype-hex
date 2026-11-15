@@ -243,3 +243,16 @@ fn live_transcribe() {
         "the service returned an empty transcript"
     );
 }
+
+/// Live 文字整理 check: `WETYPE_TEST_ARRANGE` holds the text to tidy.
+#[test]
+#[ignore = "needs network access and WETYPE_TEST_ARRANGE"]
+fn live_arrange() {
+    let Ok(text) = std::env::var("WETYPE_TEST_ARRANGE") else {
+        return;
+    };
+    let mut client = Client::connect().expect("connects to WeType");
+    let arranged = client.arrange(&text, true).expect("arranges text");
+    println!("arranged:\n{arranged}");
+    assert!(!arranged.trim().is_empty(), "the service returned nothing");
+}
