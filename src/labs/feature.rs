@@ -90,6 +90,29 @@ pub enum Feature {
 }
 
 impl Feature {
+    /// A lab whose only effect needs a local GGUF model, a GPU, a download,
+    /// or a local benchmark. This cloud-only fork keeps the feature, its
+    /// switch, and its saved value, but hides its card from Settings.
+    pub const fn needs_local_model(self) -> bool {
+        matches!(
+            self,
+            Self::LiveText
+                | Self::VocabularyBiasing
+                | Self::ScreenVocabulary
+                | Self::SkipPauses
+                | Self::KeyboardModelSwitching
+                | Self::AppModelSwitching
+                | Self::UnloadIdle
+                | Self::PickerSortFilter
+                | Self::BenchmarkDetails
+                | Self::PickerActiveFirst
+                | Self::ModelInPlace
+                | Self::KQuantModels
+                | Self::PickerDownloaded
+                | Self::ParakeetUltra
+        )
+    }
+
     pub const ALL: [Self; 82] = [
         Self::Meetings,
         Self::VoiceFilter,

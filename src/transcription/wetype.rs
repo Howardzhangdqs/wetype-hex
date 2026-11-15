@@ -10,10 +10,12 @@
 //! same when a model cannot stream), and a timed request gets one segment
 //! spanning the clip.
 
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr};
 
+use crate::transcription::engine::{Partial, StreamFeed};
 use crate::transcription::local_transcriber::TimedSpan;
 use crate::transcription::models::{TranscriptionModelId, TranscriptionSelection};
 use crate::transcription::transcript::{TimestampLevel, Transcript, TranscriptSegment};
@@ -28,14 +30,19 @@ const SAMPLES_PER_MS: usize = 16;
 
 pub(crate) struct WetypeTranscriber {
     selection: TranscriptionSelection,
-    client: Option<Client>,
+    /// The connection, shared with a live stream that may outlive one
+    /// dictionary call. Kept warm between dictations.
+    client: Arc<Mutex<Option<Client>>>,
 }
 
 impl WetypeTranscriber {
     pub(crate) fn load(selection: &TranscriptionSelection) -> Result<Self> {
+        let client = Arc::new(Mutex::new(None));
+        #[cfg(not(test))]
+        warm(Arc::clone(&client));
         Ok(Self {
             selection: selection.clone(),
-            client: None,
+            client,
         })
     }
 
@@ -122,7 +129,7 @@ impl WetypeTranscriber {
         match self.attempt(samples) {
             Ok(transcript) => Ok(final_text(transcript)),
             Err(first) => {
-                self.client = None;
+                self.clear_client();
                 tracing::info!(error = %first, "reconnecting to the WeChat ASR service");
                 self.attempt(samples)
                     .wrap_err_with(|| format!("WeChat ASR failed: {first}"))
@@ -132,21 +139,106 @@ impl WetypeTranscriber {
     }
 
     fn attempt(
-        &mut self,
+        &self,
         samples: &[f32],
     ) -> std::result::Result<CloudTranscript, crate::wetype::Error> {
-        if self.client.is_none() {
-            self.client = Some(Client::connect_with_timeout(REQUEST_TIMEOUT)?);
+        let mut guard = self
+            .client
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if guard.is_none() {
+            *guard = Some(Client::connect_with_timeout(REQUEST_TIMEOUT)?);
         }
-        self.client
+        let result = guard
             .as_mut()
             .expect("the client was connected above")
-            .transcribe_f32(samples, None)
+            .transcribe_f32(samples, None);
+        if result.is_err() {
+            *guard = None;
+        }
+        result
     }
+
+    fn clear_client(&self) {
+        *self
+            .client
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+    }
+
+    /// Open a live utterance over this backend's connection. The engine
+    /// drives it while the shortcut is held, publishing the service's
+    /// cumulative text for the HUD's live text plate.
+    pub(crate) fn open_stream(&self) -> Option<WetypeLive> {
+        {
+            let mut guard = self
+                .client
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            if guard.is_none() {
+                match Client::connect_with_timeout(REQUEST_TIMEOUT) {
+                    Ok(client) => *guard = Some(client),
+                    Err(error) => {
+                        tracing::warn!(%error, "could not connect the WeChat live stream");
+                        return None;
+                    }
+                }
+            }
+        }
+        match crate::wetype::session::VoiceStream::new(Arc::clone(&self.client)) {
+            Ok(inner) => Some(WetypeLive { inner }),
+            Err(error) => {
+                // The connection itself is still usable for a whole-clip
+                // request; only this utterance's encoder failed.
+                tracing::warn!(%error, "could not start the WeChat live stream");
+                None
+            }
+        }
+    }
+}
+
+/// Connect once in the background so the first dictation's live stream has a
+/// session instead of paying the handshake at the press. Failures are silent:
+/// the next use connects again.
+#[cfg(not(test))]
+fn warm(client: Arc<Mutex<Option<Client>>>) {
+    let _ = std::thread::Builder::new()
+        .name("wetype-warm".into())
+        .spawn(move || {
+            if let Ok(connected) = Client::connect_with_timeout(REQUEST_TIMEOUT) {
+                let mut guard = client.lock().unwrap_or_else(|error| error.into_inner());
+                if guard.is_none() {
+                    *guard = Some(connected);
+                }
+            }
+        });
 }
 
 fn final_text(transcript: CloudTranscript) -> String {
     transcript.final_text().trim().to_owned()
+}
+
+/// The engine's view of a live cloud utterance.
+pub(crate) struct WetypeLive {
+    inner: crate::wetype::session::VoiceStream,
+}
+
+impl StreamFeed for WetypeLive {
+    fn feed(&mut self, samples: &[f32]) -> std::result::Result<(), String> {
+        self.inner.feed(samples).map_err(|error| error.to_string())
+    }
+
+    fn finalize(&mut self) -> std::result::Result<String, String> {
+        self.inner.finish().map_err(|error| error.to_string())
+    }
+
+    fn partial(&self) -> Partial {
+        let (stable, tentative) = self.inner.partial();
+        Partial {
+            stable: stable.to_owned(),
+            tentative: tentative.to_owned(),
+        }
+    }
 }
 
 fn transcript_with_span(text: String, duration_ms: i64) -> Transcript {

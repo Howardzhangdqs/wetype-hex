@@ -43,6 +43,11 @@ fn tap(rt: &mut Runtime<Ui>, key: &str) {
 
 #[test]
 fn keyboard_model_switching_is_a_labs_toggle_wherever_layouts_are_observable() {
+    // This fork hides the local-model rows and labs; the cloud picker has
+    // nothing to switch or sort.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-settings");
     assert!(!rt.state.settings.keyboard_model_switching.enabled);
     assert!(
@@ -122,6 +127,11 @@ fn keyboard_model_switching_maps_enabled_sources_to_an_installed_model_and_langu
 
 #[test]
 fn a_one_language_model_shows_its_language_fixed() {
+    // This fork hides the local-model rows and labs; the cloud picker has
+    // nothing to switch or sort.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let rt = runtime("mac-input-source-models");
     // ABC maps to Parakeet Unified English, which has only English.
     assert!(rt.find("input-source-language0").is_some());

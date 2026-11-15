@@ -8,7 +8,8 @@
 //! order on one thread, because a live stream holds the model's compute lease.
 
 use std::collections::VecDeque;
-mod streaming;
+pub(crate) mod streaming;
+pub(crate) use streaming::StreamFeed;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, SyncSender};
@@ -529,7 +530,7 @@ impl PendingTranscript {
 
 impl TranscriptionEngine {
     pub fn start(model: Model) -> Result<Self> {
-        let streams = model.stream_options().is_some();
+        let streams = model.streams();
         Self::with_model(Some(model), None, streams)
     }
 
@@ -588,7 +589,13 @@ impl TranscriptionEngine {
             stalled,
             requests,
             streams,
-            live_text: || crate::labs::live_text() || crate::dictation::live_text::demanded(),
+            live_text: || {
+                crate::labs::live_text()
+                    || crate::dictation::live_text::demanded()
+                    // The cloud streams natively; its live plate is not an
+                    // experiment here.
+                    || crate::transcription::models::CLOUD_ONLY
+            },
             held,
             dictating,
             next_stream: AtomicU64::new(0),
@@ -1210,8 +1217,7 @@ impl Worker {
     /// the next capture still opens a stream (which reloads it).
     fn publish_streams(&self) {
         if let Some(model) = &self.model {
-            self.streams
-                .store(model.stream_options().is_some(), Ordering::Release);
+            self.streams.store(model.streams(), Ordering::Release);
         }
     }
 
@@ -1260,6 +1266,10 @@ impl Worker {
         let options = self
             .model()
             .and_then(|model| model.stream_options().cloned());
+        if options.is_none() && self.model.as_ref().is_some_and(|model| model.streams()) {
+            self.own_stream(id, cancel, partials, commands, next);
+            return;
+        }
         let Some(options) = options else {
             let loaded = self.model.is_some();
             let model_streams = self
@@ -1312,6 +1322,58 @@ impl Worker {
             stats.pauses_dropped_ms = capped.dropped / 16;
             ended
         });
+        self.finish_live(
+            ended.map_err(|error| error.to_string()),
+            stats,
+            begun,
+            partials,
+            next,
+        );
+    }
+
+    /// Drives a stream the backend owns itself (the cloud), with the same
+    /// command loop and partial publication as a GGUF stream.
+    fn own_stream(
+        &mut self,
+        id: u64,
+        cancel: &CancelToken,
+        partials: Option<&Partials>,
+        commands: &Receiver<Command>,
+        next: &mut VecDeque<Command>,
+    ) {
+        self.running.enter(cancel);
+        let begun = Instant::now();
+        let mut stats = FeedStats::default();
+        let stalled = &self.stalled;
+        let Some(model) = self.model.as_mut() else {
+            return;
+        };
+        let Some(mut stream) = model.open_stream() else {
+            tracing::warn!(stream = id, "could not open the cloud live stream");
+            return;
+        };
+        let ended = drive_stream(
+            id,
+            stream.as_mut(),
+            commands,
+            stalled,
+            partials,
+            next,
+            &mut stats,
+        );
+        self.finish_live(Ok(ended), stats, begun, partials, next);
+    }
+
+    /// Finish a live stream result: log its stats, publish its text, or fall
+    /// back to the whole clip when the stream was unusable.
+    fn finish_live(
+        &mut self,
+        ended: std::result::Result<StreamEnd, String>,
+        stats: FeedStats,
+        begun: Instant,
+        partials: Option<&Partials>,
+        next: &mut VecDeque<Command>,
+    ) {
         let FeedStats {
             feed_ms,
             feeds,

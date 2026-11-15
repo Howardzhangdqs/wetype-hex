@@ -218,7 +218,8 @@ pub(crate) fn install<S: 'static>(app: &mut rune::App<S>, place: Place) {
     .options(OverlayOptions {
         prewarm: cfg!(target_os = "macos")
             || crate::labs::live_text()
-            || crate::labs::failure_notices(),
+            || crate::labs::failure_notices()
+            || crate::transcription::models::CLOUD_ONLY,
         #[cfg(not(target_os = "macos"))]
         display: crate::rune_hud::display(),
         ..Default::default()

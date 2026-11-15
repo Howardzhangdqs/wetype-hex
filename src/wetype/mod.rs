@@ -70,7 +70,14 @@ pub(crate) const SCRIPT_SIMPLIFIED: u64 = 1;
 /// `TextPolishReq.ScriptType` for traditional Chinese.
 pub(crate) const SCRIPT_TRADITIONAL: u64 = 2;
 
-/// Opus packets sent per voice request (50 × 20 ms = 1 s).
+/// Opus packets sent per live-stream request (25 × 20 ms = 500 ms): short
+/// enough for a live plate to follow the speaker, long enough to keep round
+/// trips a small fraction of the audio.
+pub(crate) const STREAM_PACKETS_PER_REQUEST: usize = 25;
+/// The first live request goes out after 160 ms of speech, so the plate's
+/// first words appear about a third of a second sooner than a full batch.
+pub(crate) const FIRST_STREAM_PACKETS: usize = 8;
+/// Opus packets sent per whole-clip request (50 × 20 ms = 1 s).
 ///
 /// The shipped clients send 120 ms in real time because they stream while the
 /// user speaks. Hex transcribes a finished clip, so larger batches trade the

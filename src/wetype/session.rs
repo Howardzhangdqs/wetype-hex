@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tungstenite::WebSocket;
@@ -17,9 +18,9 @@ use tungstenite::protocol::{Message, WebSocketConfig};
 use tungstenite::stream::MaybeTlsStream;
 
 use super::{
-    CMD_DH, CMD_NOTIFY, CMD_POLISH, CMD_UIN, CMD_VOICE, DEVICE_MODEL, Error, HOST, OPUS_MAGIC,
-    OS_TYPE, PACKETS_PER_REQUEST, PLATFORM, Result, SCRIPT_SIMPLIFIED, SIGN_KEY, SYSTEM_VERSION,
-    VERSION, crypto, opus, pb, snappy,
+    CMD_DH, CMD_NOTIFY, CMD_POLISH, CMD_UIN, CMD_VOICE, DEVICE_MODEL, Error, FIRST_STREAM_PACKETS,
+    HOST, OPUS_MAGIC, OS_TYPE, PACKETS_PER_REQUEST, PLATFORM, Result, SCRIPT_SIMPLIFIED, SIGN_KEY,
+    STREAM_PACKETS_PER_REQUEST, SYSTEM_VERSION, VERSION, crypto, opus, pb, snappy,
 };
 
 /// How long to wait for the service's reply to a request.
@@ -533,7 +534,7 @@ impl Client {
 
     // -- recognition -----------------------------------------------------
     /// Send one voice request and return `(text, polished, end_flag)`.
-    fn voice(
+    pub(crate) fn voice(
         &mut self,
         voice_id: &str,
         opus_chunk: Option<&[u8]>,
@@ -571,6 +572,165 @@ impl Client {
             fields.string(14).unwrap_or_default(),
             fields.varint(5).unwrap_or(0),
         ))
+    }
+}
+
+/// A live utterance fed while the person speaks.
+///
+/// Audio is buffered and encoded into 20 ms Opus frames; every
+/// [`STREAM_PACKETS_PER_REQUEST`] frames (500 ms) the stream sends one voice
+/// request and takes the service's cumulative text for the live plate. The
+/// last request marks the end and is followed by the service's end-of-
+/// utterance polls, which add the final punctuation and written form.
+pub struct VoiceStream {
+    client: Arc<Mutex<Option<Client>>>,
+    encoder: opus::OpusEncoder,
+    voice_id: String,
+    /// Samples not yet a whole 20 ms frame.
+    pending: Vec<f32>,
+    /// Encoded frames not yet sent.
+    packets: Vec<Vec<u8>>,
+    seq: u64,
+    total: usize,
+    /// Whether the 200 ms lead-in silence has been prepended.
+    lead: bool,
+    /// The service's cumulative text; the plate shows its tail.
+    text: String,
+}
+
+impl VoiceStream {
+    pub(crate) fn new(client: Arc<Mutex<Option<Client>>>) -> Result<Self> {
+        Ok(Self {
+            client,
+            encoder: opus::OpusEncoder::new()?,
+            voice_id: token_hex(16)?,
+            pending: Vec::new(),
+            packets: Vec::new(),
+            seq: 0,
+            total: 0,
+            lead: true,
+            text: String::new(),
+        })
+    }
+
+    /// Feed 16 kHz mono samples in `-1.0..=1.0` as the microphone delivers
+    /// them. A request is sent for every 500 ms of audio.
+    pub fn feed(&mut self, samples: &[f32]) -> Result<()> {
+        self.pending.extend_from_slice(samples);
+        while self.pending.len() >= opus::FRAME_SAMPLES {
+            let frame: Vec<f32> = self.pending.drain(..opus::FRAME_SAMPLES).collect();
+            let pcm: Vec<i16> = frame
+                .iter()
+                .map(|sample| (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16)
+                .collect();
+            self.packets.push(self.encoder.encode(&pcm)?);
+            let batch = if self.seq == 0 {
+                FIRST_STREAM_PACKETS
+            } else {
+                STREAM_PACKETS_PER_REQUEST
+            };
+            if self.packets.len() >= batch {
+                self.send(false)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The cumulative text so far. It is published whole as `stable` (with
+    /// no tentative part) so the plate's head truncation keeps the newest
+    /// words in view; the service may revise it as more audio arrives.
+    pub fn partial(&self) -> (&str, &str) {
+        (&self.text, "")
+    }
+
+    /// Finish the utterance: send what was not sent, mark the end, and take
+    /// the polished text from the service's end polls.
+    pub fn finish(&mut self) -> Result<String> {
+        if !self.pending.is_empty() {
+            let mut frame: Vec<i16> = self
+                .pending
+                .iter()
+                .map(|sample| (sample.clamp(-1.0, 1.0) * f32::from(i16::MAX)).round() as i16)
+                .collect();
+            frame.resize(opus::FRAME_SAMPLES, 0);
+            self.packets.push(self.encoder.encode(&frame)?);
+            self.pending.clear();
+        }
+        // Always mark the end with one request, even when the last feed sent
+        // a full batch: the polls alone would add a needless 250 ms.
+        let (mut text, mut polished) = self.send(true)?;
+        // The engine gives a stream 1.5 s to finish; four polls stay inside.
+        for _ in 0..4 {
+            if !polished.is_empty() {
+                break;
+            }
+            std::thread::sleep(POLL_INTERVAL);
+            let (new_text, new_polished, end) = self.request(None, 0, 0, true)?;
+            if !new_text.is_empty() {
+                text = new_text;
+            }
+            if !new_polished.is_empty() {
+                polished = new_polished;
+            }
+            if end != 0 && !text.is_empty() {
+                break;
+            }
+        }
+        self.update(&text);
+        Ok(if polished.is_empty() { text } else { polished })
+    }
+
+    fn send(&mut self, is_end: bool) -> Result<(String, String)> {
+        if self.lead {
+            let silence = [0_i16; opus::FRAME_SAMPLES];
+            let mut lead = Vec::with_capacity(opus::LEAD_FRAMES + self.packets.len());
+            for _ in 0..opus::LEAD_FRAMES {
+                lead.push(self.encoder.encode(&silence)?);
+            }
+            lead.append(&mut self.packets);
+            self.packets = lead;
+            self.lead = false;
+        }
+        self.seq += 1;
+        let chunk = pack(&self.packets, self.seq == 1);
+        self.total += chunk.len();
+        self.packets.clear();
+        let (text, polished, _) = self.request(Some(&chunk), self.seq, self.total, is_end)?;
+        self.update(&text);
+        Ok((text, polished))
+    }
+
+    /// One voice request over the shared connection, reconnecting if the
+    /// caller's last use left none. A transport failure drops the connection
+    /// so the next use reconnects instead of reusing a dead socket.
+    fn request(
+        &mut self,
+        chunk: Option<&[u8]>,
+        seq: u64,
+        total: usize,
+        is_end: bool,
+    ) -> Result<(String, String, u64)> {
+        let mut guard = self
+            .client
+            .lock()
+            .unwrap_or_else(|error| error.into_inner());
+        if guard.is_none() {
+            *guard = Some(Client::connect_with_timeout(DEFAULT_TIMEOUT)?);
+        }
+        let result = guard
+            .as_mut()
+            .expect("the client was connected above")
+            .voice(&self.voice_id, chunk, seq, total, is_end);
+        if result.is_err() {
+            *guard = None;
+        }
+        result
+    }
+
+    fn update(&mut self, text: &str) {
+        if !text.is_empty() {
+            self.text = text.to_owned();
+        }
     }
 }
 
@@ -679,7 +839,7 @@ fn rand_lower(n: usize) -> Result<String> {
 }
 
 /// `2 * n` lowercase hex characters from `n` random bytes.
-fn token_hex(n: usize) -> Result<String> {
+pub(crate) fn token_hex(n: usize) -> Result<String> {
     let mut bytes = vec![0u8; n];
     getrandom::fill(&mut bytes)
         .map_err(|error| Error::Crypto(format!("random source failed: {error}")))?;

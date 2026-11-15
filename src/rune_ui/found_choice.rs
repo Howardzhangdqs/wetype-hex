@@ -17,7 +17,9 @@ use crate::transcription::models::{self as transcription_models, TranscriptionSe
 /// the model isn't ready yet, or the person picked from it (it stays, so a
 /// ready pick moves on from the list and Back returns to it).
 pub(super) fn offered(ui: &Ui, model: ItemStatus) -> bool {
-    !ui.found.models.is_empty() && (model != ItemStatus::Ready || ui.found.picked.is_some())
+    !crate::transcription::models::CLOUD_ONLY
+        && !ui.found.models.is_empty()
+        && (model != ItemStatus::Ready || ui.found.picked.is_some())
 }
 
 /// Whether the list waits for its first pick, so Continue starts the

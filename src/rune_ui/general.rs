@@ -204,7 +204,11 @@ pub(super) fn basics(ui: &Ui, p: Paint, layer: &mut Vec<El>, query: &str) -> Opt
             control,
         ),
     );
-    if let Some(row) = language_row(ui, p, layer) {
+    // The cloud service is a Mandarin recognizer; its language is fixed, so
+    // the select would not change anything.
+    if !crate::transcription::models::CLOUD_ONLY
+        && let Some(row) = language_row(ui, p, layer)
+    {
         rows.push(tr("Language"), row);
     }
     let tidy_note = tr("Use WeChat's 文字整理 model to structure each dictation before pasting");
@@ -795,7 +799,7 @@ pub(super) fn dictation(ui: &Ui, p: Paint, layer: &mut Vec<El>, query: &str) -> 
         );
     }
     // Labs › Switch model with keyboard language: its mappings, while on.
-    if ui.platform.caps.keyboard_model_switching {
+    if ui.platform.caps.keyboard_model_switching && !crate::transcription::models::CLOUD_ONLY {
         rows.push(
             tr("Switch model with keyboard language"),
             folding(
@@ -836,7 +840,9 @@ pub(super) fn dictation(ui: &Ui, p: Paint, layer: &mut Vec<El>, query: &str) -> 
     );
     // macOS runs its models on Metal or Apple's speech engine.
     #[cfg(any(target_os = "linux", target_os = "windows"))]
-    if ui.platform.caps.os != super::platform::Os::Macos {
+    if ui.platform.caps.os != super::platform::Os::Macos
+        && !crate::transcription::models::CLOUD_ONLY
+    {
         rows.push(tr("Speech engine"), speech_engine_row(ui, p, layer));
     }
     rows.into_rows()

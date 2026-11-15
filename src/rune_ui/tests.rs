@@ -1173,6 +1173,11 @@ fn assert_hover_is_binary(rt: &Runtime<Ui>, what: &str) {
 
 #[test]
 fn segments_and_switch_tracks_hover_at_once() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("portal", true, TALL_SIZE);
     open_advanced(&mut rt, Pane::General);
     let targets = [
@@ -2577,6 +2582,11 @@ fn browsing_the_picker_never_changes_the_language() {
 
 #[test]
 fn changing_only_the_language_prepares_the_same_model_again() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("portal", true, GOLDEN_SIZE);
     rt.state.settings.transcription.model = TranscriptionModelId::WhisperLargeV3Turbo;
     rt.state.picker.fallback = Some(picker::LanguageFallback {

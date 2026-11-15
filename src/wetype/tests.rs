@@ -256,3 +256,43 @@ fn live_arrange() {
     println!("arranged:\n{arranged}");
     assert!(!arranged.trim().is_empty(), "the service returned nothing");
 }
+
+/// Live stream check: `WETYPE_TEST_RAW` holds s16le 16 kHz mono PCM.
+#[test]
+#[ignore = "needs network access and WETYPE_TEST_RAW pointing at s16le 16 kHz mono PCM"]
+fn live_stream_publishes_partials() {
+    use std::sync::{Arc, Mutex};
+
+    let Ok(path) = std::env::var("WETYPE_TEST_RAW") else {
+        return;
+    };
+    let bytes = std::fs::read(&path).expect("raw PCM file reads");
+    let pcm: Vec<f32> = bytes
+        .chunks_exact(2)
+        .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32768.0)
+        .collect();
+    let slot = Arc::new(Mutex::new(Some(Client::connect().expect("connects"))));
+    let mut stream = session::VoiceStream::new(slot).expect("starts a stream");
+    let mut seen = String::new();
+    for chunk in pcm.chunks(2_560) {
+        stream.feed(chunk).expect("feeds audio");
+        let (stable, tentative) = stream.partial();
+        seen = format!("{stable}{tentative}");
+    }
+    let text = stream.finish().expect("finishes");
+    assert!(!seen.is_empty(), "streaming published no partial text");
+    assert!(!text.is_empty(), "the finished stream returned nothing");
+    println!("partial: {seen}\nfinal: {text}");
+}
+
+/// The auto-tidy entry point, exactly as dictation calls it.
+#[test]
+#[ignore = "needs network access and WETYPE_TEST_TIDY"]
+fn live_tidy_changes_a_spoken_paragraph() {
+    let Ok(text) = std::env::var("WETYPE_TEST_TIDY") else {
+        return;
+    };
+    let arranged = crate::wetype::tidy::tidy(&text).expect("tidies");
+    println!("tidy: {arranged:?}");
+    assert!(arranged.is_some());
+}

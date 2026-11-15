@@ -410,6 +410,10 @@ fn shown(ui: &Ui) -> Vec<Row> {
     rows(ui)
         .into_iter()
         .filter(|row| row.lab.audience().reaches(crate::dev_build::is_dev_build()))
+        .filter(|row| {
+            !(crate::transcription::models::CLOUD_ONLY
+                && matches!(row.lab, Lab::Feature(feature) if feature.needs_local_model()))
+        })
         .collect()
 }
 

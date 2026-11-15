@@ -140,8 +140,11 @@ pub(super) fn open(ui: &mut Ui) {
     ui.open = None;
     ui.picker.open = true;
     ui.picker.clear_deletion();
-    // Models already on this computer: headers only, on a worker.
-    super::found::scan(ui);
+    // Models already on this computer: headers only, on a worker. A
+    // cloud-only build offers no local model to compare.
+    if !crate::transcription::models::CLOUD_ONLY {
+        super::found::scan(ui);
+    }
     ui.picker.sort = Sort::default();
     ui.picker.supported_only = false;
     ui.picker.downloaded_only = false;
@@ -159,12 +162,18 @@ pub(super) fn show(ui: &mut Ui, view: View) {
 
 /// Whether Labs › Sort and filter models is on.
 fn sort_filter_on(ui: &Ui) -> bool {
+    if crate::transcription::models::CLOUD_ONLY {
+        return false;
+    }
     let feature = crate::labs::Feature::PickerSortFilter;
     feature.shipped() && feature.on(&ui.settings)
 }
 
 /// Whether Labs › Downloaded models only is on.
 fn downloaded_on(ui: &Ui) -> bool {
+    if crate::transcription::models::CLOUD_ONLY {
+        return false;
+    }
     let feature = crate::labs::Feature::PickerDownloaded;
     feature.shipped() && feature.on(&ui.settings)
 }
@@ -533,11 +542,13 @@ pub(super) fn modal(ui: &Ui, p: Paint) -> Option<[El; 2]> {
                         .rotate(std::f32::consts::PI),
                 )
                 .child(heading(&title));
-            // Labs › Use model files where they are.
-            if let Some(in_place) = super::model_import::in_place_button(ui, p) {
-                header = header.child(in_place);
+            if !crate::transcription::models::CLOUD_ONLY {
+                // Labs › Use model files where they are.
+                if let Some(in_place) = super::model_import::in_place_button(ui, p) {
+                    header = header.child(in_place);
+                }
+                header = header.child(super::model_import::add_button(ui, p));
             }
-            header = header.child(super::model_import::add_button(ui, p));
             let mut all = col().key("all");
             if sort_filter_on(ui) {
                 all = all.child(sort_filter_row(ui, p, &language));
@@ -999,6 +1010,11 @@ mod tests {
 
     #[test]
     fn the_model_in_use_is_fixed_while_the_picker_is_open() {
+        // This fork hides the local-model rows and labs, and the cloud model
+        // streams without a GGUF artifact; this test describes that catalog.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut ui = ui_with_active_first(true);
         let saved = ui.settings.transcription.model;
         open(&mut ui);
@@ -1127,6 +1143,11 @@ mod tests {
 
     #[test]
     fn browsing_never_saves_or_asks_for_a_model() {
+        // This fork hides the local-model rows and labs; the cloud picker has
+        // nothing to switch or sort.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut settings = AppSettings::default();
         settings.labs.picker_sort_filter = true;
         let mut ui = Ui::with(settings, super::super::Service::Fixture(Vec::new()));

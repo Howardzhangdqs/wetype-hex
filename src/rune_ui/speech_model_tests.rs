@@ -87,6 +87,11 @@ fn speech(rt: &Runtime<Ui>, index: Option<usize>) -> Option<KeyboardModelChoice>
 
 #[test]
 fn app_model_switching_is_a_labs_toggle_on_macos_and_windows() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-settings");
     assert!(!rt.state.settings.labs.app_model_switching);
     tap(&mut rt, "nav-labs");

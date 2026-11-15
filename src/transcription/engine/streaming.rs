@@ -4,7 +4,7 @@ use super::*;
 /// The clip is authoritative: a stream fed well past its trimmed end, or one
 /// that produced nothing, is reported unusable so the caller falls back.
 /// The live stream as the worker drives it.
-pub(super) trait StreamFeed {
+pub(crate) trait StreamFeed {
     fn feed(&mut self, samples: &[f32]) -> Result<(), String>;
     fn finalize(&mut self) -> Result<String, String>;
     fn partial(&self) -> Partial;
@@ -405,7 +405,7 @@ pub(super) struct FeedStats {
 /// command interrupts the stream.
 pub(super) fn drive_stream(
     id: u64,
-    stream: &mut impl StreamFeed,
+    stream: &mut dyn StreamFeed,
     commands: &Receiver<Command>,
     stalled: &AtomicBool,
     partials: Option<&Partials>,
@@ -528,7 +528,7 @@ pub(super) fn drive_yielding(
 }
 
 pub(super) fn finish_stream(
-    stream: &mut impl StreamFeed,
+    stream: &mut dyn StreamFeed,
     clip: &[f32],
     fed: usize,
 ) -> Result<String, String> {

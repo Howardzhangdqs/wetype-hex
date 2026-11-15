@@ -917,6 +917,9 @@ pub(crate) struct SwapFailed {
 /// ([`WetypeTranscriber`]); the GGUF engine stays compiled because the rest of
 /// Hex (found models, imports, benchmarks) still names it, but nothing offers
 /// a model download.
+// The loaded GGUF model is a large in-place struct; boxing it would ripple
+// through every field access for no gain on the engine thread.
+#[allow(clippy::large_enum_variant)]
 pub enum LocalTranscriber {
     Gguf(GgufTranscriber),
     Wetype(crate::transcription::wetype::WetypeTranscriber),
@@ -944,6 +947,28 @@ impl LocalTranscriber {
         match self {
             Self::Gguf(model) => model.stream_options(),
             Self::Wetype(model) => model.stream_options(),
+        }
+    }
+
+    /// Whether this backend transcribes while the person speaks. The cloud
+    /// drives its own stream without `transcribe_cpp::StreamOptions`.
+    pub(crate) fn streams(&self) -> bool {
+        match self {
+            Self::Gguf(model) => model.stream_options().is_some(),
+            Self::Wetype(_) => true,
+        }
+    }
+
+    /// The backend's own live stream, when it has one (the cloud). The engine
+    /// drives it with the same feed/finalize loop as a GGUF stream.
+    pub(crate) fn open_stream(
+        &mut self,
+    ) -> Option<Box<dyn crate::transcription::engine::StreamFeed + 'static>> {
+        match self {
+            Self::Gguf(_) => None,
+            Self::Wetype(model) => model.open_stream().map(|stream| {
+                Box::new(stream) as Box<dyn crate::transcription::engine::StreamFeed>
+            }),
         }
     }
 

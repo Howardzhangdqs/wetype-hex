@@ -672,10 +672,9 @@ pub const MODELS: &[ModelDefinition] = &[
         name: "WeChat Input Method (cloud)",
         realtime: "Cloud",
         word_error_rate: None,
-        // The cloud accepts audio in 120 ms batches and returns cumulative
-        // text, but this fork transcribes a finished clip (dictation keeps
-        // buffering while the shortcut is held).
-        streams: false,
+        // The cloud accepts audio in batches and returns cumulative text, so
+        // dictation streams while the shortcut is held.
+        streams: true,
         runtime: ModelRuntime::WeType,
         languages: &["zh", "en"],
         accepts_language_hint: false,
@@ -1725,6 +1724,11 @@ mod tests {
 
     #[test]
     fn only_the_streaming_parakeet_artifacts_are_marked_streaming() {
+        // This fork hides the local-model rows and labs, and the cloud model
+        // streams without a GGUF artifact; this test describes that catalog.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         // transcribe.cpp advertises streaming for Parakeet's chunked-attention
         // (Unified English) and cache-aware (Nemotron 3.5) variants; Whisper,
         // Qwen3-ASR, SenseVoice, Cohere, and the offline TDT checkpoints

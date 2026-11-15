@@ -1413,7 +1413,11 @@ impl DictationCapture {
             );
         }
         recording.show_live_text = recording.stream.is_some()
-            && (crate::labs::live_text() || crate::dictation::live_text::board_demanded());
+            && (crate::labs::live_text()
+                || crate::dictation::live_text::board_demanded()
+                // The cloud streams natively, so its words are shown without
+                // turning on a lab.
+                || crate::transcription::models::CLOUD_ONLY);
         recording.feed_stream();
     }
 

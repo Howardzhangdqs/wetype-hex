@@ -2070,6 +2070,11 @@ fn hud_lab_picks_dot_scope_processing_placement_and_level() {
 
 #[test]
 fn labs_lists_every_toggle_off_by_default() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-production", true, (980.0, 2000.0));
     rt.state.settings.experimental.hex_microphone = false;
     rt.state.platform.hex_microphone = None;
@@ -2162,6 +2167,11 @@ fn labs_lists_every_toggle_off_by_default() {
 
 #[test]
 fn a_labs_link_shows_its_labs_group_and_leaves_it_off() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     use super::super::labs::LabsLink;
     use crate::labs::Feature;
     let mut rt = runtime("mac-settings", true, (980.0, 2000.0));
@@ -2418,6 +2428,11 @@ fn a_labs_card_shows_its_description_and_its_switch_turns_it_on() {
 
 #[test]
 fn unload_when_idle_shows_its_minutes_on_its_card_while_on() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-labs", true, (980.0, 4000.0));
     rt.update(|ui, _| ui.lab_store.group = Some(crate::labs::Feature::UnloadIdle.group()));
     settle(&mut rt);
@@ -2434,6 +2449,11 @@ fn unload_when_idle_shows_its_minutes_on_its_card_while_on() {
 /// inside their card and the last choice is still reachable.
 #[test]
 fn unload_after_fits_its_card_in_a_small_translated_window() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-labs", true, (860.0, 560.0));
     crate::desktop::i18n::apply(Some("de"));
     rt.update(|ui, _| {
@@ -2556,6 +2576,11 @@ fn the_main_window_paints_the_forced_appearance_not_the_os() {
 
 #[test]
 fn the_labs_store_filters_by_tab_chip_and_search() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-labs-on", true, (980.0, 2000.0));
     assert!(rt.find("lab-card-live-text").is_some());
     assert!(
@@ -2581,6 +2606,11 @@ fn the_labs_store_filters_by_tab_chip_and_search() {
 
 #[test]
 fn the_labs_search_clear_button_empties_the_field_and_brings_every_card_back() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-labs", true, (980.0, 4000.0));
     unfold_labs(&mut rt);
     rt.update(|ui, _| ui.lab_store.search = rune::TextEdit::new("live text".to_string()));
@@ -2666,6 +2696,11 @@ fn new_in_labs_isnt_repeated_in_the_grid() {
 /// turns off. A search shows every match whatever the folds.
 #[test]
 fn labs_groups_fold_and_remember_it() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("mac-labs", true, (980.0, 4000.0));
     assert!(
         rt.find("lab-card-live-text").is_some(),
@@ -3141,6 +3176,11 @@ fn a_stable_build_offers_only_uninstall_for_an_installed_driver() {
 
 #[test]
 fn a_stable_build_has_no_playground_or_voice_filter_lab() {
+    // This fork hides the local-model rows and labs, and the cloud model
+    // streams without a GGUF artifact; this test describes that catalog.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let _stable = crate::dev_build::pretend_stable();
     let mut rt = runtime("mac-settings", true, (980.0, 4000.0));
     rt.state.settings.labs.playground = true;

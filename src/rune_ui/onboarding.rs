@@ -93,9 +93,14 @@ pub(super) fn poll(ui: &mut Ui) -> bool {
     // its own download until the scan answers; with one found, the model
     // list (`found_choice`) starts the row the person picks.
     if ui.tour.is_some() {
-        super::found::scan_for_setup(ui);
+        // A cloud-only build has no local model to find or start.
+        let local_models = !crate::transcription::models::CLOUD_ONLY;
+        if local_models {
+            super::found::scan_for_setup(ui);
+        }
         // Only until setup: past it, the recommended model downloads.
-        let held = (ui.found.scanning() || !ui.found.models.is_empty())
+        let held = local_models
+            && (ui.found.scanning() || !ui.found.models.is_empty())
             && ui
                 .tour
                 .as_ref()
