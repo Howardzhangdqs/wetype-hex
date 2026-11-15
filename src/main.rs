@@ -73,6 +73,7 @@ mod shortcut_pause;
 mod suppression;
 mod transcription;
 mod updater;
+mod wetype;
 #[cfg(target_os = "windows")]
 mod windows;
 

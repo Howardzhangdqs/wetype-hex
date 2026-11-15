@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::time::Instant;
 
-use color_eyre::eyre::{Result, WrapErr, eyre};
+use color_eyre::eyre::{Result, WrapErr, bail, eyre};
 use transcribe_cpp::{Backend, Model, ModelOptions, RunOptions, TimestampKind};
 
 use crate::app_settings::TranscriptionDevice;
@@ -16,7 +16,7 @@ use crate::transcription::{pad_gguf_samples, trailing_silence_samples};
 /// A word or segment's start and end (ms from the clip's start) and text.
 pub type TimedSpan = (i64, i64, String);
 
-pub struct LocalTranscriber {
+pub struct GgufTranscriber {
     session: OfflineGgufSession,
     selection: TranscriptionSelection,
     options: RunOptions,
@@ -63,6 +63,11 @@ pub(crate) fn device() -> TranscriptionDevice {
 
 pub fn install(selection: &TranscriptionSelection, canceled: &AtomicBool) -> Result<()> {
     let model = validate(selection)?;
+    if crate::transcription::models::CLOUD_ONLY {
+        bail!(
+            "transcription uses WeChat Input Method's cloud service; there is no model to install"
+        );
+    }
     let downloaded = AtomicU64::new(0);
     println!("Installing {} ({})...", model.name, model.size_label());
     let path = download_with_progress(model, canceled, &downloaded)?;
@@ -202,6 +207,11 @@ pub fn devices() -> Result<Vec<String>> {
 /// Later model loads reuse the instance.
 #[cfg(target_os = "linux")]
 pub fn initialize_backends() {
+    // The cloud backend runs no ggml work, so a fork launch asks for no GPU
+    // driver and initializes no backend.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     if let Err(error) = init_backends() {
         tracing::warn!(%error, "could not initialize transcription backends");
     }
@@ -247,7 +257,7 @@ fn read_wav(reader: impl std::io::Read + std::io::Seek) -> Result<Vec<f32>> {
     Ok(samples)
 }
 
-impl LocalTranscriber {
+impl GgufTranscriber {
     /// Loads and prewarms `selection` where Settings › Speech engine says:
     /// on Auto a GPU unless it failed before under its current driver
     /// ([`gpu_health`], #856), on GPU the best GPU, on CPU the CPU. A GPU load
@@ -774,7 +784,7 @@ impl ModelSwap {
     fn target(&self) -> (&TranscriptionSelection, TranscriptionDevice) {
         self.ready
             .as_ref()
-            .map(|(selection, model)| (selection, model.preference))
+            .map(|(selection, model)| (selection, model.preference()))
             .or(self
                 .reload
                 .as_ref()
@@ -802,11 +812,11 @@ impl ModelSwap {
     /// because the running model fills the GPU: then it is dropped, and the
     /// engine reloads the selection once its own model is gone.
     fn place(&mut self, selection: TranscriptionSelection, transcriber: LocalTranscriber) {
-        if transcriber.gpu_full {
+        if transcriber.gpu_full() {
             tracing::info!(
                 "the GPU has no room for the new model beside the running one; loading it in its place"
             );
-            let device = transcriber.preference;
+            let device = transcriber.preference();
             drop(transcriber);
             self.ready = None;
             self.reload = Some((selection, device));
@@ -874,7 +884,7 @@ impl ModelSwap {
     pub(crate) fn take_ready(&mut self) -> Option<LocalTranscriber> {
         let (selection, transcriber) = self.ready.take()?;
         self.loaded = selection;
-        self.device = transcriber.preference;
+        self.device = transcriber.preference();
         Some(transcriber)
     }
 
@@ -899,6 +909,162 @@ pub(crate) struct SwapFailed {
     pub(crate) wanted: TranscriptionSelection,
     pub(crate) kept: TranscriptionSelection,
     pub(crate) error: String,
+}
+
+/// The backend a saved selection runs.
+///
+/// This fork's catalog has one entry, WeChat Input Method's cloud service
+/// ([`WetypeTranscriber`]); the GGUF engine stays compiled because the rest of
+/// Hex (found models, imports, benchmarks) still names it, but nothing offers
+/// a model download.
+pub enum LocalTranscriber {
+    Gguf(GgufTranscriber),
+    Wetype(crate::transcription::wetype::WetypeTranscriber),
+}
+
+impl LocalTranscriber {
+    /// Loads `selection`: the cloud client (which opens no connection yet) or
+    /// a local GGUF model.
+    pub fn load(selection: &TranscriptionSelection) -> Result<Self> {
+        // Both backends refuse a language their model does not offer; the
+        // cloud service is a Mandarin recognizer with no model file to check.
+        crate::transcription::models::validate(selection)?;
+        if matches!(
+            crate::transcription::models::definition(selection.model).runtime,
+            crate::transcription::models::ModelRuntime::WeType
+        ) {
+            return Ok(Self::Wetype(
+                crate::transcription::wetype::WetypeTranscriber::load(selection)?,
+            ));
+        }
+        Ok(Self::Gguf(GgufTranscriber::load(selection)?))
+    }
+
+    pub(crate) fn stream_options(&self) -> Option<&transcribe_cpp::StreamOptions> {
+        match self {
+            Self::Gguf(model) => model.stream_options(),
+            Self::Wetype(model) => model.stream_options(),
+        }
+    }
+
+    pub(crate) fn stream_trailing_silence(&self) -> usize {
+        match self {
+            Self::Gguf(model) => model.stream_trailing_silence(),
+            Self::Wetype(model) => model.stream_trailing_silence(),
+        }
+    }
+
+    pub(crate) fn model_id(&self) -> TranscriptionModelId {
+        match self {
+            Self::Gguf(model) => model.model_id(),
+            Self::Wetype(model) => model.model_id(),
+        }
+    }
+
+    pub(crate) fn with_stream<R>(
+        &mut self,
+        stream_options: &transcribe_cpp::StreamOptions,
+        cancel: &transcribe_cpp::CancelToken,
+        drive: impl FnOnce(&mut transcribe_cpp::Stream<'_>) -> R,
+    ) -> transcribe_cpp::Result<R> {
+        match self {
+            Self::Gguf(model) => model.with_stream(stream_options, cancel, drive),
+            Self::Wetype(model) => model.with_stream(stream_options, cancel, drive),
+        }
+    }
+
+    pub(crate) fn gguf_selection(&self) -> Option<&TranscriptionSelection> {
+        match self {
+            Self::Gguf(model) => model.gguf_selection(),
+            Self::Wetype(model) => model.gguf_selection(),
+        }
+    }
+
+    pub(crate) fn matches_selection(&self, selection: &TranscriptionSelection) -> bool {
+        match self {
+            Self::Gguf(model) => model.matches_selection(selection),
+            Self::Wetype(model) => model.matches_selection(selection),
+        }
+    }
+
+    pub(crate) fn prewarm(&mut self) -> Result<()> {
+        match self {
+            Self::Gguf(model) => model.prewarm(),
+            Self::Wetype(model) => model.prewarm(),
+        }
+    }
+
+    pub(crate) fn transcribe_clip(&mut self, samples: Vec<f32>) -> Result<String> {
+        match self {
+            Self::Gguf(model) => model.transcribe_clip(samples),
+            Self::Wetype(model) => model.transcribe_clip(samples),
+        }
+    }
+
+    pub(crate) fn transcribe_timed(
+        &mut self,
+        samples: Vec<f32>,
+    ) -> Result<crate::transcription::transcript::Transcript> {
+        match self {
+            Self::Gguf(model) => model.transcribe_timed(samples),
+            Self::Wetype(model) => model.transcribe_timed(samples),
+        }
+    }
+
+    pub(crate) fn timestamps(&self) -> crate::transcription::transcript::TimestampLevel {
+        match self {
+            Self::Gguf(model) => model.timestamps(),
+            Self::Wetype(model) => model.timestamps(),
+        }
+    }
+
+    pub fn device_label(&self) -> &str {
+        match self {
+            Self::Gguf(model) => model.device_label(),
+            Self::Wetype(model) => model.device_label(),
+        }
+    }
+
+    pub fn transcribe_words(&mut self, samples: &[f32]) -> Result<(String, Vec<TimedSpan>)> {
+        match self {
+            Self::Gguf(model) => model.transcribe_words(samples),
+            Self::Wetype(model) => model.transcribe_words(samples),
+        }
+    }
+
+    pub(crate) fn transcribe_segments(
+        &mut self,
+        samples: Vec<f32>,
+    ) -> Result<crate::transcription::transcript::Transcript> {
+        match self {
+            Self::Gguf(model) => model.transcribe_segments(samples),
+            Self::Wetype(model) => model.transcribe_segments(samples),
+        }
+    }
+
+    pub fn transcribe(&mut self, samples: &[f32]) -> Result<String> {
+        match self {
+            Self::Gguf(model) => model.transcribe(samples),
+            Self::Wetype(model) => model.transcribe(samples),
+        }
+    }
+
+    /// The device setting the loaded model runs under, for the swap policy.
+    pub(crate) fn preference(&self) -> TranscriptionDevice {
+        match self {
+            Self::Gguf(model) => model.preference,
+            Self::Wetype(_) => TranscriptionDevice::Cpu,
+        }
+    }
+
+    /// Whether a GGUF load fell back to the CPU because the GPU was full.
+    /// The cloud has no GPU, so it never has to be reloaded for one.
+    pub(crate) fn gpu_full(&self) -> bool {
+        match self {
+            Self::Gguf(model) => model.gpu_full,
+            Self::Wetype(_) => false,
+        }
+    }
 }
 
 #[cfg(test)]

@@ -797,6 +797,11 @@ fn a_broken_settings_file_is_named_at_launch_with_its_parse_error() {
 
 #[test]
 fn launch_publishes_the_saved_selection_before_the_worker_starts() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let _restore = RestoredRuntime;
     let file = SettingsFile::new(b"{}");
     let saved = TranscriptionSelection {

@@ -226,7 +226,7 @@ fn choices_name_what_they_choose_and_read_their_value() {
     assert_eq!(name(&model), "Speech model");
     assert_eq!(
         a11y_value(&rt, "transcription-control").as_deref(),
-        Some("Parakeet Unified English")
+        Some("WeChat Input Method (cloud)")
     );
     let microphone = node(&rt, "microphone-control");
     assert_eq!(name(&microphone), "Microphone");

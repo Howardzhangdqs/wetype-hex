@@ -868,6 +868,7 @@ fn transcription_action(
         crate::transcription::models::ModelRuntime::AppleSpeech => {
             crate::transcription::models::is_installed(model, &selection.language)
         }
+        crate::transcription::models::ModelRuntime::WeType => true,
     };
     if !prepared {
         return RequestAction::Respond(HttpResponse::code(409, "model-not-ready"));
@@ -1646,26 +1647,17 @@ mod tests {
         assert!(vitals.starts_with("HTTP/1.1 503"));
         let models = request(document.port, Some(&document.token), "/models");
         let models: Vec<serde_json::Value> = serde_json::from_str(response_body(&models)).unwrap();
-        assert_eq!(
-            models.len(),
-            crate::transcription::models::MODELS
-                .iter()
-                .filter(|model| model.available())
-                .count()
-        );
-        assert_eq!(models[0]["id"], "parakeet_unified_en");
-        assert!(models[0]["downloadBytes"].is_number());
+        // This fork lists one model, the WeChat cloud service: no download,
+        // no language detection, Mandarin (and English) only.
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0]["id"], "wetype");
+        assert!(models[0]["downloadBytes"].is_null());
         assert_eq!(models[0]["supportsLanguageDetection"], false);
-        let whisper = models
-            .iter()
-            .find(|model| model["id"] == "whisper_large_v3_turbo")
-            .unwrap();
-        assert_eq!(whisper["supportsLanguageDetection"], true);
         assert!(
-            whisper["languages"]
+            models[0]["languages"]
                 .as_array()
                 .unwrap()
-                .contains(&"auto".into())
+                .contains(&"zh".into())
         );
         assert!(models.iter().all(|model| model["id"] != "apple_speech"));
         let unknown_model = request_with_method(

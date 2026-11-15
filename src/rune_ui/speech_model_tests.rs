@@ -112,6 +112,11 @@ fn app_model_switching_is_a_labs_toggle_on_macos_and_windows() {
 
 #[test]
 fn a_mode_picks_an_installed_speech_model_and_language() {
+    // This fork lists one model (the WeChat cloud service); these
+    // tests describe the local catalog picker.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = modes(true, true);
     assert!(rt.find("mode-speech-0").is_some());
     assert!(rt.find("mode-speech-language-0").is_none());

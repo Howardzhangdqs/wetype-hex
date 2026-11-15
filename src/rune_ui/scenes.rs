@@ -968,7 +968,7 @@ pub(super) fn fixture(shortcuts: DesktopShortcuts) -> Ui {
             key: Some(HotkeyKey::named("f12")),
         },
         transcription: crate::transcription::models::TranscriptionSelection {
-            model: TranscriptionModelId::ParakeetUnifiedEnglish,
+            model: TranscriptionModelId::WeType,
             language: "en".into(),
         },
         paste_with_shift: true,
@@ -977,7 +977,7 @@ pub(super) fn fixture(shortcuts: DesktopShortcuts) -> Ui {
     let mut ui = Ui::with(settings, Service::Fixture(Vec::new()));
     ui.platform.wayland = true;
     ui.models = models::Models::fixture();
-    ui.picker.installed = Some(vec![TranscriptionModelId::ParakeetUnifiedEnglish]);
+    ui.picker.installed = Some(vec![TranscriptionModelId::WeType]);
     ui.view = Some(ServiceView {
         listener: DesktopListenerSnapshot {
             running: true,

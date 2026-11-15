@@ -180,6 +180,7 @@ impl AppSettings {
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         settings.repair_section_key();
         settings.normalize_double_tap_settings();
+        settings.normalize_cloud_selection();
         settings.repair_extra_dictation_shortcuts();
         // After every repair that can put Annotate back on its default
         // shortcut, which a saved record shortcut may now share: a mouse

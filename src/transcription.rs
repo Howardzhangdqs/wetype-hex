@@ -31,6 +31,8 @@ pub(crate) mod speech_detector;
 pub(crate) mod stream;
 pub(crate) mod subtitle_credits;
 pub(crate) mod transcript;
+#[cfg(any(target_os = "linux", target_os = "windows"))]
+pub(crate) mod wetype;
 
 #[cfg(target_os = "macos")]
 use color_eyre::eyre::Result;

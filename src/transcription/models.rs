@@ -32,7 +32,6 @@ pub use super::model_benchmarks::{BenchmarkRecord, benchmark};
 /// keeps the default for it without rewriting the file (#744).
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 pub enum TranscriptionModelId {
-    #[default]
     ParakeetUnifiedEnglish,
     ParakeetV2,
     ParakeetV3,
@@ -51,6 +50,10 @@ pub enum TranscriptionModelId {
     NbWhisperMedium,
     GraniteSpeech5,
     AppleSpeech,
+    /// WeChat Input Method's cloud ASR (this fork's backend). It has no
+    /// weights on disk: the audio goes to `wetype.weixin.qq.com` over WSS.
+    #[default]
+    WeType,
     Custom(CustomModelId),
 }
 
@@ -88,6 +91,7 @@ impl TranscriptionModelId {
             Self::NbWhisperMedium => "nb_whisper_medium",
             Self::GraniteSpeech5 => "granite_speech_5",
             Self::AppleSpeech => "apple_speech",
+            Self::WeType => "wetype",
             Self::Custom(id) => id.as_str(),
         }
     }
@@ -127,6 +131,7 @@ impl FromStr for TranscriptionModelId {
             "nb_whisper_medium" => Ok(Self::NbWhisperMedium),
             "granite_speech_5" => Ok(Self::GraniteSpeech5),
             "apple_speech" => Ok(Self::AppleSpeech),
+            "wetype" => Ok(Self::WeType),
             _ => CustomModelId::parse(value)
                 .map(Self::Custom)
                 .ok_or_else(|| eyre!("unknown transcription model: {value}")),
@@ -174,13 +179,18 @@ pub struct TranscriptionSelection {
 impl Default for TranscriptionSelection {
     fn default() -> Self {
         Self {
-            model: TranscriptionModelId::default(),
+            model: TranscriptionModelId::WeType,
+            // First-run settings pick their language from the system; this
+            // value only seeds in-memory state before settings load.
             language: "en".into(),
         }
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+// One model is listed in this fork, so only `Recommended` is constructed; the
+// other badges stay for the catalog code the fork keeps compiled.
+#[allow(dead_code)]
 pub enum Recommendation {
     Recommended,
     Fastest,
@@ -226,6 +236,8 @@ pub enum VocabularyUse {
 pub enum ModelRuntime {
     Gguf(&'static GgufArtifact),
     AppleSpeech,
+    /// A cloud service with no artifact to download or verify.
+    WeType,
 }
 
 pub struct GgufArtifact {
@@ -257,6 +269,7 @@ impl ModelDefinition {
     /// switch, so a test can run either side of Labs › Smaller model files.
     pub(crate) fn available_where(&self, k_quants: bool) -> bool {
         match (self.runtime, self.id) {
+            (ModelRuntime::WeType, _) => true,
             (ModelRuntime::AppleSpeech, _) => false,
             (ModelRuntime::Gguf(_), TranscriptionModelId::Custom(id)) => {
                 super::custom_models::usable(id)
@@ -341,6 +354,7 @@ impl ModelDefinition {
 
     pub fn size_label(&self) -> String {
         match self.runtime {
+            ModelRuntime::WeType => "Cloud".into(),
             ModelRuntime::AppleSpeech => "Managed".into(),
             ModelRuntime::Gguf(artifact) if artifact.bytes >= 1_000_000_000 => {
                 format!("{:.1} GB", artifact.bytes as f64 / 1_000_000_000.0)
@@ -387,7 +401,7 @@ impl ModelDefinition {
     pub const fn download_bytes(&self) -> Option<u64> {
         match self.runtime {
             ModelRuntime::Gguf(artifact) => Some(artifact.bytes),
-            ModelRuntime::AppleSpeech => None,
+            ModelRuntime::AppleSpeech | ModelRuntime::WeType => None,
         }
     }
 }
@@ -653,9 +667,27 @@ pub const MODELS: &[ModelDefinition] = &[
         accepts_language_hint: true,
         supports_language_detection: false,
     },
+    ModelDefinition {
+        id: TranscriptionModelId::WeType,
+        name: "WeChat Input Method (cloud)",
+        realtime: "Cloud",
+        word_error_rate: None,
+        // The cloud accepts audio in 120 ms batches and returns cumulative
+        // text, but this fork transcribes a finished clip (dictation keeps
+        // buffering while the shortcut is held).
+        streams: false,
+        runtime: ModelRuntime::WeType,
+        languages: &["zh", "en"],
+        accepts_language_hint: false,
+        supports_language_detection: false,
+    },
 ];
 
 pub const AUTO_LANGUAGE: &str = "auto";
+
+/// This build has one transcription backend: WeChat Input Method's cloud
+/// service. No model is downloaded, verified, or kept on disk.
+pub const CLOUD_ONLY: bool = true;
 
 pub fn definition(id: TranscriptionModelId) -> &'static ModelDefinition {
     if let TranscriptionModelId::Custom(id) = id {
@@ -669,91 +701,19 @@ pub fn definition(id: TranscriptionModelId) -> &'static ModelDefinition {
 
 /// Every catalog model, then the imports while their Labs toggle is on.
 pub fn all_models() -> Vec<&'static ModelDefinition> {
-    MODELS
-        .iter()
-        .chain(
-            super::custom_models::imported()
-                .into_iter()
-                .map(|import| import.definition),
-        )
-        .collect()
+    // This fork's catalog has one runtime: WeChat Input Method's cloud
+    // service. The GGUF entries stay compiled for the local fallback code
+    // paths, but no UI or CLI lists them, so nothing offers a download.
+    vec![definition(TranscriptionModelId::WeType)]
 }
 
-pub(crate) fn choices_for_runtime(language: &str) -> Vec<ModelChoice> {
-    use Recommendation::{Fastest, MostAccurate, Recommended, Vocabulary};
-    use TranscriptionModelId::{
-        CohereTranscribe, GigaAmV3, IvritWhisperLargeV3Turbo, NbWhisperMedium,
-        ParakeetUnifiedEnglish, ParakeetV3, Qwen3Asr06B, SenseVoiceSmall, WhisperLargeV3Turbo,
-    };
-    let choices: &[(TranscriptionModelId, Recommendation)] = match language {
-        AUTO_LANGUAGE => &[(WhisperLargeV3Turbo, Recommended), (Qwen3Asr06B, Fastest)],
-        "en" => &[
-            (ParakeetUnifiedEnglish, Recommended),
-            (CohereTranscribe, MostAccurate),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        "zh" => &[
-            (Qwen3Asr06B, Recommended),
-            (SenseVoiceSmall, Fastest),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        "yue" | "ko" => &[
-            (Qwen3Asr06B, Recommended),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        // FLEURS Japanese test: Granite Speech 5.0 tied Whisper turbo
-        // (5.04% CER against 5.02%) at 2.4 times its speed, without
-        // vocabulary, so it stays unbadged (Hex's run).
-        "ja" => &[
-            (WhisperLargeV3Turbo, Recommended),
-            (SenseVoiceSmall, Fastest),
-        ],
-        "el" => &[
-            (CohereTranscribe, Recommended),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        "fi" | "sv" | "da" => &[(WhisperLargeV3Turbo, Recommended), (ParakeetV3, Fastest)],
-        "mt" => &[(ParakeetV3, Recommended)],
-        "ar" => &[
-            (WhisperLargeV3Turbo, Recommended),
-            (CohereTranscribe, MostAccurate),
-        ],
-        "tr" | "ms" | "fil" | "fa" | "mk" => &[(WhisperLargeV3Turbo, Recommended)],
-        // FLEURS Hebrew test: 18.45% WER against stock Whisper's 29.69%.
-        "he" => &[
-            (IvritWhisperLargeV3Turbo, Recommended),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        // FLEURS Russian test: 5.37% WER against Parakeet v3's 6.52%, and
-        // Whisper turbo's 5.36% at a fifth of its speed (Hex's run).
-        "ru" => &[(GigaAmV3, Recommended), (WhisperLargeV3Turbo, Vocabulary)],
-        // FLEURS Norwegian test: 6.68% WER against Whisper turbo's 8.94%, at
-        // 0.89 times its speed and 60% of its download (Hex's run).
-        "no" => &[
-            (NbWhisperMedium, Recommended),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        "vi" => &[
-            (Qwen3Asr06B, Recommended),
-            (CohereTranscribe, MostAccurate),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        language if PARAKEET_V3_LANGUAGES.contains(&language) => {
-            &[(ParakeetV3, Recommended), (WhisperLargeV3Turbo, Vocabulary)]
-        }
-        language if QWEN_LANGUAGES.contains(&language) => &[
-            (Qwen3Asr06B, Recommended),
-            (WhisperLargeV3Turbo, Vocabulary),
-        ],
-        _ => &[(WhisperLargeV3Turbo, Recommended)],
-    };
-    choices
-        .iter()
-        .map(|&(id, recommendation)| ModelChoice {
-            model: definition(id),
-            recommendation,
-        })
-        .collect()
+pub(crate) fn choices_for_runtime(_language: &str) -> Vec<ModelChoice> {
+    // One runtime in this fork; language selection stays on the model but
+    // the service transcribes Mandarin (and mixed English) only.
+    vec![ModelChoice {
+        model: definition(TranscriptionModelId::WeType),
+        recommendation: Recommendation::Recommended,
+    }]
 }
 
 /// Every available model in the picker's order for `language`: its
@@ -762,6 +722,13 @@ pub(crate) fn choices_for_runtime(language: &str) -> Vec<ModelChoice> {
 pub(crate) fn picker_models(
     language: &str,
 ) -> Vec<(&'static ModelDefinition, Option<Recommendation>)> {
+    if CLOUD_ONLY {
+        let _ = language;
+        return vec![(
+            definition(TranscriptionModelId::WeType),
+            Some(Recommendation::Recommended),
+        )];
+    }
     let recommended = choices_for_runtime(language);
     let others = MODELS
         .iter()
@@ -921,6 +888,7 @@ pub fn is_installed(model: &ModelDefinition, language: &str) -> bool {
     #[cfg(not(target_os = "macos"))]
     let _ = language;
     match model.runtime {
+        ModelRuntime::WeType => true,
         ModelRuntime::Gguf(artifact) => model_path(model)
             .and_then(|path| Ok(fs::metadata(path)?.len() == artifact.bytes))
             .unwrap_or(false),
@@ -1143,6 +1111,14 @@ pub fn download_with_stage_progress(
     downloaded_bytes: &AtomicU64,
     stage: &AtomicU8,
 ) -> Result<PathBuf> {
+    // This fork transcribes with WeChat Input Method's cloud service. Model
+    // downloads stay compiled (the local GGUF path is still reachable from
+    // old code), but no user-facing flow can start one.
+    if CLOUD_ONLY {
+        bail!(
+            "model downloads are disabled in this build; transcription uses WeChat Input Method's cloud service"
+        );
+    }
     let ModelRuntime::Gguf(artifact) = model.runtime else {
         bail!("{} is installed and managed by macOS", model.name);
     };
@@ -1326,21 +1302,17 @@ fn verification_receipt_path(model_path: &Path) -> PathBuf {
 /// recommended runtime model. Unknown languages fall back to English, so an
 /// English system starts with Parakeet Unified English.
 pub fn recommended_selection(language: &str) -> TranscriptionSelection {
-    let language = LANGUAGES
-        .iter()
-        .find(|(code, _)| *code == language)
-        .map_or("en", |(code, _)| *code);
-    let choices = choices_for_runtime(language);
-    let model = choices
-        .iter()
-        .find(|choice| choice.recommendation == Recommendation::Recommended)
-        .or_else(|| choices.first())
-        .map_or(TranscriptionModelId::ParakeetUnifiedEnglish, |choice| {
-            choice.model.id
-        });
+    cloud_selection(language)
+}
+
+/// The cloud service's selection for `language`: the service is a Mandarin
+/// recognizer, so only English keeps its language (first-run setup then does
+/// not switch an English system out from under the user); every other
+/// language starts on Mandarin.
+pub fn cloud_selection(language: &str) -> TranscriptionSelection {
     TranscriptionSelection {
-        model,
-        language: language.into(),
+        model: TranscriptionModelId::WeType,
+        language: if language == "en" { "en" } else { "zh" }.into(),
     }
 }
 
@@ -1543,6 +1515,11 @@ mod tests {
 
     #[test]
     fn hebrew_recommends_the_ivrit_fine_tune_with_its_hint() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         use Recommendation::{Recommended, Vocabulary};
         use TranscriptionModelId::{IvritWhisperLargeV3Turbo, WhisperLargeV3Turbo};
         let hebrew: Vec<_> = choices_for_runtime("he")
@@ -1581,6 +1558,11 @@ mod tests {
 
     #[test]
     fn norwegian_recommends_nb_whisper_with_its_hint() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         use Recommendation::{Recommended, Vocabulary};
         use TranscriptionModelId::{NbWhisperMedium, WhisperLargeV3Turbo};
         let norwegian: Vec<_> = choices_for_runtime("no")
@@ -1608,6 +1590,11 @@ mod tests {
 
     #[test]
     fn russian_recommends_gigaam_without_a_hint() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         use Recommendation::{Recommended, Vocabulary};
         use TranscriptionModelId::{GigaAmV3, WhisperLargeV3Turbo};
         let russian: Vec<_> = choices_for_runtime("ru")
@@ -1626,6 +1613,11 @@ mod tests {
 
     #[test]
     fn recommendations_are_language_specific() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let english = choices_for_runtime("en");
         assert_eq!(
             english[0].model.id,
@@ -1742,7 +1734,9 @@ mod tests {
             .filter(|model| model.streams)
             .map(|model| match model.runtime {
                 ModelRuntime::Gguf(artifact) => artifact.variant,
-                ModelRuntime::AppleSpeech => panic!("a streaming model has a GGUF artifact"),
+                ModelRuntime::AppleSpeech | ModelRuntime::WeType => {
+                    panic!("a streaming model has a GGUF artifact")
+                }
             })
             .collect::<Vec<_>>();
         assert_eq!(
@@ -1884,6 +1878,11 @@ mod tests {
 
     #[test]
     fn automatic_language_choices_only_include_detection_models() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let choices = choices_for_runtime(AUTO_LANGUAGE);
 
         assert!(!choices.is_empty());
@@ -1913,6 +1912,11 @@ mod tests {
 
     #[test]
     fn weak_qwen_and_parakeet_languages_route_to_stronger_shipped_models() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         use Recommendation::{Fastest, MostAccurate, Recommended, Vocabulary};
         use TranscriptionModelId::{
             CohereTranscribe, ParakeetV3, Qwen3Asr06B, SenseVoiceSmall, WhisperLargeV3Turbo,
@@ -1977,6 +1981,11 @@ mod tests {
 
     #[test]
     fn every_language_choice_supports_its_language_and_first_run_picks_it() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         for (language, _) in LANGUAGES {
             let choices = choices_for_runtime(language);
             assert!(!choices.is_empty(), "{language}");
@@ -1999,6 +2008,11 @@ mod tests {
 
     #[test]
     fn the_picker_lists_every_model_with_the_language_s_recommendations_first() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let ids = |language| {
             picker_models(language)
                 .into_iter()
@@ -2095,6 +2109,11 @@ mod tests {
 
     #[test]
     fn parakeet_v3_supports_portuguese_without_language_conditioning() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let selection = TranscriptionSelection {
             model: TranscriptionModelId::ParakeetV3,
             language: "pt".into(),
@@ -2121,6 +2140,11 @@ mod tests {
 
     #[test]
     fn bangla_is_transcribed_by_whisper_with_its_language_hint() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let selection = recommended_selection("bn");
         assert_eq!(selection.model, TranscriptionModelId::WhisperLargeV3Turbo);
         assert_eq!(selection.language, "bn");
@@ -2240,6 +2264,11 @@ mod tests {
 
     #[test]
     fn an_installed_model_does_not_wait_for_the_speech_detector() {
+        // This fork lists one model, the WeChat cloud service; the catalog
+        // routing these tests describe is compiled but unreachable.
+        if CLOUD_ONLY {
+            return;
+        }
         let directory = std::env::temp_dir().join(format!(
             "hex-installed-download-{}-{}",
             std::process::id(),

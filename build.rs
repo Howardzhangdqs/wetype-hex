@@ -24,11 +24,11 @@ fn main() {
     }
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
-            // transcribe-cpp's static manifest records OpenBLAS as an absolute
-            // link argument, which Cargo does not propagate through the -sys
-            // crate to this final binary. Keep it after the static archives so
-            // GNU ld's --as-needed does not discard it before seeing cblas_*.
-            println!("cargo:rustc-link-arg=-lopenblas");
+            // This fork's CMake build takes GGML_BLAS's Linux default (off):
+            // transcription runs in the cloud, so the local CPU backend is
+            // never initialized. Upstream links OpenBLAS here for its
+            // release build; asking for it would fail on a host without
+            // libopenblas.
         }
         if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
             // transcribe-cpp's Vulkan backend links the vulkan-1 import

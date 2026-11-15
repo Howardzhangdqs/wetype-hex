@@ -200,6 +200,7 @@ pub(super) fn reads_vocabulary(ui: &Ui, def: &ModelDefinition) -> bool {
 /// The download's size, or who keeps the model when Hex downloads none.
 pub(super) fn size_text(def: &ModelDefinition) -> String {
     match def.runtime {
+        ModelRuntime::WeType => tr("Cloud service").into(),
         ModelRuntime::AppleSpeech => tr("Managed by macOS").into(),
         ModelRuntime::Gguf(_) => def.size_label(),
     }
@@ -229,6 +230,7 @@ pub(super) fn blurb(def: &ModelDefinition) -> &'static str {
         M::SenseVoiceSmall => tr("Chinese, Japanese, Korean and English. A small download"),
         M::UnderdogBark3Pro => tr("Parakeet, tuned for fewer wrong words in English"),
         M::UnderdogBark3Clean => tr("English, with the ums and uhs taken out"),
+        M::WeType => tr("Chinese dictation through WeChat Input Method's cloud service"),
         M::Nemotron35Asr => tr("Writes while you talk, in 27 languages"),
         M::GigaAmV3 => tr("Russian, with punctuation. A small download"),
         M::NbWhisperMedium => tr("Whisper, tuned for Norwegian by its National Library"),

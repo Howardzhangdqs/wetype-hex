@@ -1,38 +1,42 @@
-# Hex
+# wetype-hex
 
-Hex is local voice dictation for Mac, Windows and Linux. Hold a key, speak, and
-it pastes.
+A fork of [anomalyco/hex](https://github.com/anomalyco/hex) whose speech
+engine is **WeChat Input Method's cloud ASR** instead of a local speech model.
 
-## How it works
+Hold a shortcut, speak, let go: the audio goes to
+`wss://wetype.weixin.qq.com/` over the reverse-engineered WeType protocol, and
+the recognized, punctuated text is pasted into the focused app. Nothing is
+downloaded, no model file is kept on disk, and no GPU is required — the
+server also adds punctuation and turns spoken phrasing into written Chinese.
 
-- hold the shortcut, speak, then let go
-- Hex transcribes on your device and pastes into whatever app you're in
-- the first run downloads a speech model; after that nothing leaves your machine
-- experimental features live in Labs, at the bottom of the sidebar
+The protocol client is a native Rust port of
+[`wetype-asr`](https://github.com/Howardzhangdqs/wetype-asr) (WSS + protobuf +
+Snappy + AES-256-ECB + secp128r1 ECDH + Opus); no Python, ffmpeg, or libopus
+runtime is needed at use time.
 
-## Downloads
+## Status
 
-Stable is the current release. Dev is the newest build of `dev` and updates
-itself from the dev channel.
+- **Linux** is the tested target (X11 and wlroots-compatible Wayland).
+- The macOS and Windows code paths still compile, but this fork's backend has
+  only been exercised on Linux.
+- The service recognizes **Mandarin Chinese** (with mixed English words).
+- No word timestamps: a timed request gets one segment per clip.
+- **Model downloading is disabled** in this build. The local GGUF catalog and
+  its code stay compiled for the rest of Hex (meetings, history, imports), but
+  no UI or CLI command downloads or selects a model.
+- Updates are disabled: an upstream Hex update would replace this backend.
 
-| Platform | Stable | Dev |
-| --- | --- | --- |
-| macOS (Apple silicon) | [DMG](https://anoma.ly/hex/download/macos-arm64-dmg) | [DMG](https://anoma.ly/hex/download/dev/macos-arm64-dmg) |
-| Windows x64 | [Installer](https://anoma.ly/hex/download/windows-x64-setup) | [Installer](https://anoma.ly/hex/download/dev/windows-x64-setup) |
-| Windows ARM64 | [Installer](https://anoma.ly/hex/download/windows-arm64-setup) | [Installer](https://anoma.ly/hex/download/dev/windows-arm64-setup) |
-| Linux x86_64 | [Executable](https://anoma.ly/hex/download/linux-x64) | [Executable](https://anoma.ly/hex/download/dev/linux-x64) |
-| Linux x86_64 (Debian, Ubuntu) | [.deb](https://anoma.ly/hex/download/linux-x64-deb) | [.deb](https://anoma.ly/hex/download/dev/linux-x64-deb) |
-| Linux x86_64 (Fedora, openSUSE) | [.rpm](https://anoma.ly/hex/download/linux-x64-rpm) | [.rpm](https://anoma.ly/hex/download/dev/linux-x64-rpm) |
-| Linux ARM64 | [Executable](https://anoma.ly/hex/download/linux-arm64) | [Executable](https://anoma.ly/hex/download/dev/linux-arm64) |
-| Linux ARM64 (Debian, Ubuntu) | [.deb](https://anoma.ly/hex/download/linux-arm64-deb) | [.deb](https://anoma.ly/hex/download/dev/linux-arm64-deb) |
-| Linux ARM64 (Fedora, openSUSE) | [.rpm](https://anoma.ly/hex/download/linux-arm64-rpm) | [.rpm](https://anoma.ly/hex/download/dev/linux-arm64-rpm) |
+## Build
 
-Or install with:
+```sh
+cargo build --release --bin hex
+./target/release/hex transcribe recording.m4a
+```
 
-- Homebrew: `brew install --cask anomalyco/tap/hex`
-- AUR: `yay -S hex-bin`
-- install script (Linux): `curl -fsSL https://anoma.ly/hex/install-linux.sh | sh`
-- Nix (Linux): `nix profile add github:anomalyco/hex`
+Ubuntu/Debian build dependencies: Rust 1.85+, `cmake`, `clang`, and the
+regular X11/Wayland development packages Hex lists in
+[`docs/linux.md`](docs/linux.md). The local engine builds CPU-only in this fork
+(no `glslc`/Vulkan needed); see [`.cargo/config.toml`](.cargo/config.toml).
 
 ## Command line
 
@@ -42,20 +46,27 @@ MP4/M4A/MOV, including a video's soundtrack. The same `hex` controls the
 running app (`hex status`, `hex dictation`, `hex settings`); see
 [`docs/cli.md`](docs/cli.md).
 
-On macOS the CLI is inside the app. Homebrew links it for you; otherwise link
-it somewhere on your `PATH` that you own:
+The first run registers an anonymous UIN with the service and caches it in
+`~/.cache/wetype-asr/identity.json` (the same file `wetype-asr` uses), so
+later launches skip registration.
 
-```sh
-ln -s /Applications/Hex.app/Contents/MacOS/hex ~/.local/bin/hex
-```
+## How it works
 
-Linux and Windows installs put `hex` on your `PATH`.
+- `src/wetype/` — the protocol client: protobuf envelope, handshake and
+  request signing, secp128r1 ECDH, AES-256-ECB/PKCS#7, Snappy, 20 ms Opus
+  frames, and the `/api_v2` voice and text-polish requests.
+- `src/transcription/wetype.rs` — the engine adapter. It exposes the same
+  surface as a local model, so dictation, meetings, the local API, and
+  `hex transcribe` use it unchanged.
+- `src/transcription/models.rs` — `TranscriptionModelId::WeType` and
+  `ModelRuntime::WeType`, the default and only listed selection; model
+  downloads short-circuit (`CLOUD_ONLY`).
 
-More docs are in [`docs/`](docs/README.md).
+Deeper protocol notes live in the `wetype-asr` repository's
+[`docs/protocol.md`](https://github.com/Howardzhangdqs/wetype-asr/blob/main/docs/protocol.md).
 
-## Contributing
+## Relationship to upstream Hex
 
-We don't take pull requests. [Open an issue](https://github.com/anomalyco/hex/issues)
-describing the bug or idea, and our agents usually turn it around fast.
-
-MIT licensed.
+MIT licensed, like upstream. `upstream` remains a git remote, so the fork can
+take fixes; `docs/` and most of the app are unchanged. This fork adds the
+WeType backend and turns off model downloads and self-updates.

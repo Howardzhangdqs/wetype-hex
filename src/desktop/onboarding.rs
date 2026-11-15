@@ -1268,6 +1268,12 @@ mod tests {
 
     #[test]
     fn a_lost_import_waits_only_for_a_downloaded_fallback_and_stays_saved() {
+        // This fork lists only the WeChat cloud service; the catalog's
+        // per-language switching and import fallbacks stay compiled but are
+        // unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         use crate::transcription::custom_models::{self, CustomModelId, FallbackReason};
         use crate::transcription::models::{self, ModelRuntime, TranscriptionModelId};
         let directory =

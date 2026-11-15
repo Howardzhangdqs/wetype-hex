@@ -940,6 +940,11 @@ mod tests {
 
     #[test]
     fn the_language_switch_follows_the_system_language() {
+        // This fork lists one model (the WeChat cloud service), so the
+        // local catalog picker and its language switching are unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let english = english_selection();
         assert_eq!(
             alternate_selection(&english, "en"),

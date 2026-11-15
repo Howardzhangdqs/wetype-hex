@@ -890,6 +890,11 @@ mod tests {
 
     #[test]
     fn the_language_toggle_keeps_only_models_for_the_saved_language() {
+        // This fork lists one model (the WeChat cloud service); these
+        // tests describe the local catalog picker.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         for language in ["en", "ja", "mt", AUTO_LANGUAGE] {
             let all = transcription_models::picker_models(language);
             let supported = arranged(language, Sort::Recommended, true);
@@ -905,6 +910,11 @@ mod tests {
 
     #[test]
     fn a_hidden_preparing_or_active_model_is_named() {
+        // This fork lists one model (the WeChat cloud service); these
+        // tests describe the local catalog picker.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let shown = arranged("ja", Sort::Recommended, true);
         let hidden = TranscriptionModelId::ParakeetUnifiedEnglish;
         let visible = shown[0].0.id;
@@ -1036,6 +1046,11 @@ mod tests {
 
     #[test]
     fn only_downloaded_models_keeps_the_installed_ones() {
+        // This fork lists one model (the WeChat cloud service); these
+        // tests describe the local catalog picker.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut ui = ui_with_downloaded(true);
         open(&mut ui);
         assert!(!ui.picker.downloaded_only, "the switch starts off");
@@ -1067,6 +1082,11 @@ mod tests {
 
     #[test]
     fn the_downloaded_total_adds_up_hexs_own_files() {
+        // This fork lists one model (the WeChat cloud service); these
+        // tests describe the local catalog picker.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let models = transcription_models::picker_models("en");
         let installed = [
             TranscriptionModelId::ParakeetUnifiedEnglish,

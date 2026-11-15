@@ -304,6 +304,16 @@ pub(super) fn section(ui: &Ui, p: super::controls::Paint) -> Option<rune::El> {
 
 /// `model`'s pinned file, as a scene's hub cache holds it.
 pub(super) fn fixture_catalog(model: TranscriptionModelId) -> Found {
+    // A cloud-only selection has no file to find; the scene still shows a
+    // plausible found GGUF (the catalog is compiled for this fixture).
+    let model = if matches!(
+        crate::transcription::models::definition(model).runtime,
+        crate::transcription::models::ModelRuntime::Gguf(_)
+    ) {
+        model
+    } else {
+        TranscriptionModelId::ParakeetUnifiedEnglish
+    };
     let definition = crate::transcription::models::definition(model);
     let crate::transcription::models::ModelRuntime::Gguf(artifact) = definition.runtime else {
         unreachable!("scenes use GGUF models");

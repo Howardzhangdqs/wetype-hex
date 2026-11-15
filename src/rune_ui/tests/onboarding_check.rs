@@ -201,6 +201,11 @@ fn the_mic_note_follows_the_shortcut() {
 /// host locale.
 #[test]
 fn the_language_capsule_switches_only_between_different_languages() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let setup = |model: TranscriptionModelId, language: &str| {
         let mut ui = portal_fixture();
         ui.settings.transcription = TranscriptionSelection {

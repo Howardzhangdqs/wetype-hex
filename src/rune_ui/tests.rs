@@ -2453,6 +2453,11 @@ fn mode_applications_refuse_one_another_modes_use() {
 
 #[test]
 fn the_transcription_picker_asks_the_service_for_a_model() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("picker", true, PANE_SIZE);
     tap(&mut rt, "model2/action/cell/slot/choose-model");
     assert!(matches!(
@@ -2492,6 +2497,11 @@ fn tap_in_model_list(rt: &mut Runtime<Ui>, key: &str) {
 
 #[test]
 fn a_model_without_the_saved_language_falls_back_to_its_own_visibly() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("picker", true, PANE_SIZE);
     rt.state.settings.transcription = TranscriptionSelection {
         model: TranscriptionModelId::WhisperLargeV3Turbo,
@@ -2539,6 +2549,11 @@ fn a_model_without_the_saved_language_falls_back_to_its_own_visibly() {
 
 #[test]
 fn single_language_models_hide_the_language_row_without_a_fallback() {
+    // This fork lists one model (the WeChat cloud service); the local
+    // catalog behavior this test describes is unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let single = runtime("mac-settings", true, PANE_SIZE);
     assert!(single.find("transcription-language").is_none());
     let multi = runtime("language-menu", true, PANE_SIZE);
@@ -2671,6 +2686,11 @@ fn the_wheel_scrolls_a_long_term_list() {
 /// on the comparison, which fits without scrolling, so this opens every model.
 #[test]
 fn the_wheel_scrolls_the_model_picker() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("picker-custom-models", true, (900.0, 480.0));
     let list = element(&rt, "model-scroll").rect;
     let first = |rt: &Runtime<Ui>| {
@@ -2802,6 +2822,11 @@ fn the_sound_sets_sheet_plays_and_chooses_sets() {
 
 #[test]
 fn a_download_in_progress_can_be_cancelled() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("picker-downloading", true, PANE_SIZE);
     tap(&mut rt, "model1/action/cell/slot/preparing/cancel-model");
     assert!(matches!(sent(&rt), [Request::CancelModel]));
@@ -2921,7 +2946,7 @@ fn settings_opens_the_picker_and_names_the_model_and_language_apart() {
     let mut rt = runtime("portal", true, GOLDEN_SIZE);
     let shown = texts(&rt);
     assert!(
-        shown.contains(&"Parakeet Unified English".to_owned()),
+        shown.contains(&"WeChat Input Method (cloud)".to_owned()),
         "{shown:?}"
     );
     assert!(
@@ -2955,13 +2980,13 @@ fn onboarding_downloads_the_model_through_the_service() {
     assert!(matches!(
         sent(&rt),
         [Request::ChooseModel {
-            model: TranscriptionModelId::ParakeetUnifiedEnglish,
+            model: TranscriptionModelId::WeType,
             ..
         }]
     ));
     assert!(texts(&rt).contains(&"Setting up Hex".to_owned()));
-    // The service finishes: the model is installed and the practice opens.
-    rt.state.picker.installed = Some(vec![TranscriptionModelId::ParakeetUnifiedEnglish]);
+    // The service answers: the model is ready and the practice opens.
+    rt.state.picker.installed = Some(vec![TranscriptionModelId::WeType]);
     settle(&mut rt);
     rt.update(|ui, _| onboarding_kit::live::fixture_resume(ui, Page::Try));
     settle(&mut rt);
@@ -2976,6 +3001,11 @@ fn onboarding_downloads_the_model_through_the_service() {
 
 #[test]
 fn a_found_model_moves_on_without_a_download_and_back_returns_to_it() {
+    // This fork lists one model (the WeChat cloud service); the local
+    // catalog behavior this test describes is unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     let mut rt = runtime("onboarding-model-found", false, PANE_SIZE);
     assert!(rt.find("model-list").is_some());
     tap(&mut rt, "model1");
@@ -3042,7 +3072,7 @@ fn with_no_model_found_onboarding_downloads_the_recommended_model_with_no_list()
             matches!(
                 sent(&rt),
                 [Request::ChooseModel {
-                    model: TranscriptionModelId::ParakeetUnifiedEnglish,
+                    model: TranscriptionModelId::WeType,
                     ..
                 }]
             ),
@@ -3064,6 +3094,11 @@ fn with_no_model_found_onboarding_downloads_the_recommended_model_with_no_list()
 
 #[test]
 fn the_onboarding_model_list_starts_the_row_picked_or_the_recommended_one() {
+    // This fork lists one model (the WeChat cloud service); the local
+    // catalog behavior this test describes is unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     // Continue with no pick starts the selected, recommended model.
     let mut rt = runtime("onboarding-model-found", false, PANE_SIZE);
     assert!(sent(&rt).is_empty(), "nothing starts before a pick");

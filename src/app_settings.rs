@@ -511,6 +511,7 @@ impl KeyboardModelChoice {
         let model = crate::transcription::models::validate(&selection)?;
         match model.runtime {
             crate::transcription::models::ModelRuntime::Gguf(_) => Ok(()),
+            crate::transcription::models::ModelRuntime::WeType => Ok(()),
             crate::transcription::models::ModelRuntime::AppleSpeech => {
                 Err(eyre!("{} can't be switched to by input source", model.name))
             }
@@ -731,6 +732,31 @@ impl AppSettings {
     /// never change the file: no migration is written back.
     pub fn read() -> Result<Self> {
         Ok(Self::read_from(&path()?)?.0)
+    }
+
+    /// A saved local model cannot run in this cloud-only build: settings that
+    /// predate the fork, and every remembered model, resolve to the service.
+    fn normalize_cloud_selection(&mut self) {
+        if !crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
+        use crate::transcription::models::{TranscriptionModelId, cloud_selection};
+        if self.transcription.model != TranscriptionModelId::WeType {
+            self.transcription = cloud_selection(&self.transcription.language);
+        }
+        for recent in &mut self.transcription_recents {
+            if recent.model != TranscriptionModelId::WeType {
+                *recent = cloud_selection(&recent.language);
+            }
+        }
+        for choice in self.keyboard_model_switching.mappings.values_mut() {
+            if choice.model != TranscriptionModelId::WeType {
+                choice.model = TranscriptionModelId::WeType;
+                if choice.language != "en" {
+                    choice.language = "zh".into();
+                }
+            }
+        }
     }
 
     fn validate_recording_duck_volume(&self) -> Result<()> {
@@ -1589,6 +1615,11 @@ mod tests {
 
     #[test]
     fn loading_drops_keyboard_mappings_to_a_language_the_model_lacks() {
+        // This fork lists one model (the WeChat cloud service); the local
+        // catalog behavior this test describes is unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let dir = TestSettingsDir::new("keyboard-mappings");
         let mut settings = AppSettings::default();
         let russian = KeyboardModelChoice {
@@ -2254,6 +2285,11 @@ mod tests {
 
     #[test]
     fn english_dictation_switches_to_the_installed_streaming_model_once() {
+        // This fork lists one model (the WeChat cloud service); the local
+        // catalog behavior this test describes is unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut settings: AppSettings =
             serde_json::from_str(&english(TranscriptionModelId::ParakeetV3)).unwrap();
         settings.apply_one_time_migrations_with(|_| true);
@@ -2299,6 +2335,12 @@ mod tests {
 
     #[test]
     fn other_languages_and_auto_keep_their_model() {
+        // This fork lists only the WeChat cloud service; the catalog's
+        // per-language switching and import fallbacks stay compiled but are
+        // unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         for language in ["de", "auto"] {
             let model = crate::transcription::models::choices_for_runtime(language)
                 .iter()
@@ -2323,6 +2365,11 @@ mod tests {
 
     #[test]
     fn new_settings_need_no_one_time_migration() {
+        // This fork lists one model (the WeChat cloud service); the local
+        // catalog behavior this test describes is unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         assert!(AppSettings::default().has_migration(STREAMING_ENGLISH_MIGRATION));
         let dir = TestSettingsDir::new("streaming-new");
         let settings = AppSettings {
@@ -2783,6 +2830,11 @@ mod tests {
 
     #[test]
     fn saving_a_selection_persists_it_and_keeps_other_settings() {
+        // This fork lists one model (the WeChat cloud service); the local
+        // catalog behavior this test describes is unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let dir = TestSettingsDir::new("save-selection");
         let mut settings = AppSettings {
             sound_effects: false,
@@ -2807,6 +2859,12 @@ mod tests {
 
     #[test]
     fn invalid_remembered_languages_are_not_offered_by_model_switching() {
+        // This fork lists only the WeChat cloud service; the catalog's
+        // per-language switching and import fallbacks stay compiled but are
+        // unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut settings = AppSettings {
             transcription_recents: vec![
                 TranscriptionSelection {

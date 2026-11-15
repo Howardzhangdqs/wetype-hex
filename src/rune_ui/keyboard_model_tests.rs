@@ -67,6 +67,11 @@ fn keyboard_model_switching_is_a_labs_toggle_wherever_layouts_are_observable() {
 
 #[test]
 fn keyboard_model_switching_maps_enabled_sources_to_an_installed_model_and_language() {
+    // This fork lists one model (the WeChat cloud service), so the
+    // local catalog picker and its language switching are unreachable.
+    if crate::transcription::models::CLOUD_ONLY {
+        return;
+    }
     use crate::app_settings::KeyboardModelChoice;
     let mut rt = runtime("mac-settings");
     rt.state.platform.input_sources = vec![

@@ -886,6 +886,8 @@ const TRANSLATIONS: &[(&str, &str)] = &[
     ("Enable / Disable Hex", "Activer / désactiver Hex"),
     ("Updated by your package manager", "Mis à jour par votre gestionnaire de paquets"),
     ("Local", "Local"),
+    ("Cloud service", "Service cloud"),
+    ("Chinese dictation through WeChat Input Method's cloud service", "Dictée en chinois via le service cloud de WeChat Input Method"),
     ("Test", "Test"),
     ("Local build · updates off", "Build local · mises à jour désactivées"),
     ("Updated from your source checkout", "Mis à jour depuis votre copie du code source"),

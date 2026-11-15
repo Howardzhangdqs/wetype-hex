@@ -240,6 +240,11 @@ mod tests {
 
     #[test]
     fn model_menu_only_lists_downloaded_models_with_their_remembered_language() {
+        // This fork lists one model (the WeChat cloud service), so the
+        // local catalog picker and its language switching are unreachable.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let mut settings = AppSettings::default();
         settings.remember_transcription(TranscriptionSelection {
             model: TranscriptionModelId::WhisperLargeV3Turbo,

@@ -19,4 +19,8 @@ rustflags = ["-C", "target-feature=+crt-static"]
 # other type, so add a type here before the catalog gains a model that needs it
 # (`gguf_artifacts_are_q8_0_for_the_vulkan_shader_subset` guards the catalog).
 [env]
+# This fork transcribes with WeChat Input Method's cloud service, so the
+# local GGUF engine's Vulkan backend is never used; keeping it out of the
+# CMake build means a host needs no glslc to compile Hex.
+TRANSCRIBE_CMAKE_ARGS = "-DTRANSCRIBE_VULKAN=OFF"
 CMAKE_ARGS = "-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded -DGGML_VULKAN_SHADER_TYPES=f32,f16,q8_0,q5_0 -DGGML_VULKAN_MUL_MAT_ID=OFF"

@@ -405,6 +405,11 @@ mod tests {
 
     #[test]
     fn the_model_in_use_leads_its_group_only_when_pinned() {
+        // This fork lists one model (the WeChat cloud service); these
+        // tests describe the local catalog picker.
+        if crate::transcription::models::CLOUD_ONLY {
+            return;
+        }
         let entries = entries("en");
         let unpinned = groups(&entries, None);
         assert_eq!(unpinned.leading[0].0, SPEAKING);
