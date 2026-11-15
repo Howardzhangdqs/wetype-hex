@@ -886,6 +886,7 @@ const TRANSLATIONS: &[(&str, &str)] = &[
     ("Tidy dictation", "Приводить диктовку в порядок"),
     ("Automatic tidy", "Автоматическое упорядочивание"),
     ("Tidying changed nothing", "Упорядочивание ничего не изменило"),
+    ("{} unchanged lines", "{} строк без изменений"),
     ("Before tidying", "До упорядочивания"),
     ("After tidying", "После упорядочивания"),
     ("Use WeChat's 文字整理 model to structure each dictation before pasting", "Приводит каждую диктовку в порядок моделью 文字整理 WeChat перед вставкой"),

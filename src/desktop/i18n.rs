@@ -1191,6 +1191,7 @@ const TRANSLATIONS: &[(&str, [&str; 6])] = &[
     ("Enable / Disable Hex", ["Włącz / wyłącz Hex", "启用 / 停用 Hex", "Hex を有効 / 無効にする", "Hex aktivieren / deaktivieren", "Activar / desactivar Hex", "Увімкнути / вимкнути Hex"]),
     ("Updated by your package manager", ["Aktualizowany przez menedżer pakietów", "由你的软件包管理器更新", "パッケージマネージャーで更新します", "Wird von deinem Paketmanager aktualisiert", "Se actualiza con tu gestor de paquetes", "Оновлюється через менеджер пакетів"]),
     ("Local", ["Lokalna", "本地", "ローカル", "Lokal", "Local", "Локальна"]),
+    ("{} unchanged lines", ["{} niezmienionych wierszy", "{} 行未改动", "{} 行は変更なし", "{} unveränderte Zeilen", "{} líneas sin cambios", "{} рядків без змін"]),
     ("Tidying changed nothing", ["Porządkowanie niczego nie zmieniło", "整理未改变文字", "整理による変更はありません", "Das Aufräumen hat nichts geändert", "Ordenar no cambió nada", "Упорядкування нічого не змінило"]),
     ("Automatic tidy", ["Automatyczne porządkowanie", "自动整理", "自動整形", "Automatisches Aufräumen", "Orden automático", "Автоматичне впорядкування"]),
     ("Before tidying", ["Przed porządkowaniem", "整理前", "整理前", "Vor dem Aufräumen", "Antes de ordenar", "До впорядкування"]),

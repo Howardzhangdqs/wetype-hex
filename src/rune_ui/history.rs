@@ -9,7 +9,7 @@
 
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
-use rune::{El, Span, TextEdit, Tx, col, el, rich, row, text};
+use rune::{El, TextEdit, Tx, col, el, row, text};
 use rune_kit::{Menu as KitMenu, MenuItem, Placement, Select, SelectAppearance, TextInput};
 
 use super::controls::{ButtonKind, Paint, button, modal_scrim_transition, modal_transition};
@@ -23,6 +23,9 @@ use crate::history::{History, HistoryEntry, HistoryKind, HistoryRetention, Trans
 use crate::transcription::models::TranscriptionModelId;
 
 mod selection;
+mod tidy_diff;
+
+use self::tidy_diff::tidy_diff;
 
 /// The stats dialog's width and padding.
 const STATS_WIDTH: f32 = 460.0;
@@ -973,67 +976,6 @@ fn empty(ui: &Ui, p: Paint) -> Option<El> {
     })
 }
 
-/// The 文字整理 pass as an inline character diff: unchanged text as-is,
-/// removed characters red, added characters green, in the order the change
-/// was made. This is the detail's "Automatic tidy" body.
-fn tidy_diff(before: &str, after: &str, p: Paint) -> El {
-    if before == after {
-        return text(tr("Tidying changed nothing"))
-            .key("tidy-diff")
-            .font(p.k.ty.body)
-            .color(p.faint())
-            .wrap();
-    }
-    let mut content = String::new();
-    let mut spans = Vec::new();
-    for (value, tag) in tidy_segments(before, after) {
-        let offset = content.len();
-        // A run's edge whitespace stays plain: a highlighted space would
-        // leave a one-sided pad inside the pill.
-        let lead = value.len() - value.trim_start().len();
-        let trail = value.len() - value.trim_end().len();
-        let start = offset + lead;
-        let end = offset + value.len() - trail;
-        content.push_str(&value);
-        if tag == similar::ChangeTag::Equal || start >= end {
-            continue;
-        }
-        match tag {
-            similar::ChangeTag::Delete => spans.push(
-                Span::new(start, end)
-                    .color(p.danger())
-                    .bg(p.danger().alpha(0.14), 1.0)
-                    .underline(p.danger()),
-            ),
-            similar::ChangeTag::Insert => spans.push(
-                Span::new(start, end)
-                    .color(p.success())
-                    .bg(p.success().alpha(0.14), 1.0),
-            ),
-            similar::ChangeTag::Equal => {}
-        }
-    }
-    rich(content, spans)
-        .key("tidy-diff")
-        .font(p.k.ty.body)
-        .color(p.muted())
-}
-
-/// Runs of equal, removed, and added characters, adjacent runs of one tag
-/// merged so the plate draws a few spans rather than one per character.
-fn tidy_segments(before: &str, after: &str) -> Vec<(String, similar::ChangeTag)> {
-    let diff = similar::TextDiff::from_chars(before, after);
-    let mut runs: Vec<(String, similar::ChangeTag)> = Vec::new();
-    for change in diff.iter_all_changes() {
-        let tag = change.tag();
-        match runs.last_mut() {
-            Some((run, run_tag)) if *run_tag == tag => run.push_str(change.value()),
-            _ => runs.push((change.value().to_owned(), tag)),
-        }
-    }
-    runs
-}
-
 fn detail(ui: &Ui, p: Paint, layer: &mut Vec<El>) -> El {
     let pane = &ui.history;
     if multi(ui) && pane.selection.len() >= 2 {
@@ -1433,31 +1375,4 @@ fn versions_section(ui: &Ui, p: Paint, entry: &HistoryEntry) -> El {
         );
     }
     section
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_tidy_diff_marks_added_and_removed_characters() {
-        use similar::ChangeTag::{Delete, Equal, Insert};
-        assert_eq!(
-            tidy_segments("我看了现在", "我看了，现在"),
-            vec![
-                ("我看了".into(), Equal),
-                ("，".into(), Insert),
-                ("现在".into(), Equal),
-            ]
-        );
-        assert_eq!(
-            tidy_segments("还有一个问题就是如果", "还有一个问题，如果"),
-            vec![
-                ("还有一个问题".into(), Equal),
-                ("就是".into(), Delete),
-                ("，".into(), Insert),
-                ("如果".into(), Equal),
-            ]
-        );
-    }
 }
