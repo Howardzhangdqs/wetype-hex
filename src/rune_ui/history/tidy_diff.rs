@@ -52,38 +52,36 @@ enum TidyRow {
     Gap(usize),
 }
 
-/// One line of the unified diff: a fixed marker gutter and the text, with a
-/// faint red or green wash for a removed or added line.
+/// One line of the unified diff: a fixed marker gutter and the text. Only
+/// the marker and the characters this side changed carry a colour; the rest
+/// stays in the normal text colour.
 fn tidy_line(index: usize, kind: TidyKind, line: &str, other: Option<&str>, p: Paint) -> El {
-    let (marker, tint, color) = match kind {
-        TidyKind::Context => (" ", None, p.muted()),
-        TidyKind::Delete => ("-", Some(p.danger().alpha(0.07)), p.danger()),
-        TidyKind::Insert => ("+", Some(p.success().alpha(0.07)), p.success()),
+    let (marker, change_color, body_color) = match kind {
+        TidyKind::Context => (" ", p.muted(), p.muted()),
+        TidyKind::Delete => ("-", p.danger(), p.text()),
+        TidyKind::Insert => ("+", p.success(), p.text()),
     };
     let body = match other {
-        Some(other) => marked_line(line, other, kind, color, p),
-        None => text(line.to_owned()).font(p.k.ty.mono).color(color).wrap(),
+        Some(other) => {
+            let (content, spans) = marked(line, other, change_color);
+            rich(content, spans).font(p.k.ty.mono).color(body_color)
+        }
+        // A line added or removed whole has no unchanged text left to keep
+        // plain: colour it, since every character is the change.
+        None => text(line.to_owned())
+            .font(p.k.ty.mono)
+            .color(change_color)
+            .wrap(),
     };
-    let mut row = row()
+    row()
         .key(format!("tidy-row{index}"))
         .w_full()
         .gap(6.0)
         .items_start()
         .px(6.0)
         .py(2.0)
-        .child(text(marker).font(p.k.ty.mono).color(color).w(10.0))
-        .child(body.grow(1.0).shrink());
-    if let Some(tint) = tint {
-        row = row.fill(tint).radius(3.0);
-    }
-    row
-}
-
-/// A replaced line with the characters this side changed marked bold,
-/// underlined, and washed a little stronger than the line.
-fn marked_line(line: &str, other: &str, _kind: TidyKind, color: rune::Color, p: Paint) -> El {
-    let (content, spans) = marked(line, other, color);
-    rich(content, spans).font(p.k.ty.mono).color(color)
+        .child(text(marker).font(p.k.ty.mono).color(change_color).w(10.0))
+        .child(body.grow(1.0).shrink())
 }
 
 /// `line` with the characters it changed against `other` marked: Equal and
@@ -106,12 +104,7 @@ fn marked(line: &str, other: &str, color: rune::Color) -> (String, Vec<Span>) {
         let start = offset + lead;
         let end = offset + value.len() - trail;
         if tag == similar::ChangeTag::Delete && start < end {
-            spans.push(
-                Span::new(start, end)
-                    .weight(600.0)
-                    .underline(color)
-                    .bg(color.alpha(0.18), 1.0),
-            );
+            spans.push(Span::new(start, end).color(color).underline(color));
         }
     }
     (content, spans)
