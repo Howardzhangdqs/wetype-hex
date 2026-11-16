@@ -261,8 +261,6 @@ fn live_arrange() {
 #[test]
 #[ignore = "needs network access and WETYPE_TEST_RAW pointing at s16le 16 kHz mono PCM"]
 fn live_stream_publishes_partials() {
-    use std::sync::{Arc, Mutex};
-
     let Ok(path) = std::env::var("WETYPE_TEST_RAW") else {
         return;
     };
@@ -271,8 +269,8 @@ fn live_stream_publishes_partials() {
         .chunks_exact(2)
         .map(|pair| f32::from(i16::from_le_bytes([pair[0], pair[1]])) / 32768.0)
         .collect();
-    let slot = Arc::new(Mutex::new(Some(Client::connect().expect("connects"))));
-    let mut stream = session::VoiceStream::new(slot).expect("starts a stream");
+    let client = Client::connect().expect("connects");
+    let mut stream = session::VoiceStream::new(client).expect("starts a stream");
     let mut seen = String::new();
     for chunk in pcm.chunks(2_560) {
         stream.feed(chunk).expect("feeds audio");

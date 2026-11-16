@@ -1,14 +1,15 @@
 //! The WeType cloud client: one WSS connection, strictly request/response.
 //!
-//! A [`Client`] performs the handshake lazily in [`Client::connect`] and then
-//! serves as many utterances and text-polish calls as the caller needs from a
-//! single connection. Every request is one binary frame out and exactly one
-//! frame back; the service never pushes unsolicited frames.
+//! A [`Client`] performs the handshake in [`Client::connect`] and then serves
+//! the requests of one caller. The service drops long-idle sessions, so a
+//! connection is opened when it is needed and closed when that use ends
+//! rather than kept warm and reused later. Every request is one binary frame
+//! out and exactly one frame back; the service never pushes unsolicited
+//! frames.
 
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use tungstenite::WebSocket;
@@ -582,8 +583,13 @@ impl Client {
 /// request and takes the service's cumulative text for the live plate. The
 /// last request marks the end and is followed by the service's end-of-
 /// utterance polls, which add the final punctuation and written form.
+///
+/// The stream owns the connection it was opened with, so the socket exists
+/// only while someone is dictating: the service closes long-idle sessions,
+/// and a reused one would fail the utterance's first request. Dropping the
+/// stream drops the connection.
 pub struct VoiceStream {
-    client: Arc<Mutex<Option<Client>>>,
+    client: Option<Client>,
     encoder: opus::OpusEncoder,
     voice_id: String,
     /// Samples not yet a whole 20 ms frame.
@@ -599,9 +605,9 @@ pub struct VoiceStream {
 }
 
 impl VoiceStream {
-    pub(crate) fn new(client: Arc<Mutex<Option<Client>>>) -> Result<Self> {
+    pub(crate) fn new(client: Client) -> Result<Self> {
         Ok(Self {
-            client,
+            client: Some(client),
             encoder: opus::OpusEncoder::new()?,
             voice_id: token_hex(16)?,
             pending: Vec::new(),
@@ -700,9 +706,10 @@ impl VoiceStream {
         Ok((text, polished))
     }
 
-    /// One voice request over the shared connection, reconnecting if the
-    /// caller's last use left none. A transport failure drops the connection
-    /// so the next use reconnects instead of reusing a dead socket.
+    /// One voice request on this utterance's connection, replacing it if a
+    /// transport failure dropped it. A failed request ends the stream anyway
+    /// (its audio can no longer be sent in order), so the replacement only
+    /// keeps the error path from panicking.
     fn request(
         &mut self,
         chunk: Option<&[u8]>,
@@ -710,19 +717,16 @@ impl VoiceStream {
         total: usize,
         is_end: bool,
     ) -> Result<(String, String, u64)> {
-        let mut guard = self
-            .client
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if guard.is_none() {
-            *guard = Some(Client::connect_with_timeout(DEFAULT_TIMEOUT)?);
+        if self.client.is_none() {
+            self.client = Some(Client::connect_with_timeout(DEFAULT_TIMEOUT)?);
         }
-        let result = guard
+        let result = self
+            .client
             .as_mut()
             .expect("the client was connected above")
             .voice(&self.voice_id, chunk, seq, total, is_end);
         if result.is_err() {
-            *guard = None;
+            self.client = None;
         }
         result
     }

@@ -2,15 +2,21 @@
 //!
 //! Hex's transcriptions go to `wetype.weixin.qq.com` over the reverse
 //! engineered WSS protocol in [`crate::wetype`]. There is no model on disk:
-//! `load` opens no connection, the first transcription does, and one that
-//! fails is retried once on a fresh connection.
+//! `load` opens no connection, and each use connects when it starts.
 //!
-//! The service has no live stream and no word timings. A live capture is
-//! buffered by the engine and transcribed when it ends (the GGUF path does the
-//! same when a model cannot stream), and a timed request gets one segment
-//! spanning the clip.
+//! The service has no word timings. A dictation streams: its own connection
+//! carries the utterance from the moment the shortcut is pressed, the
+//! service's cumulative text feeds the live plate, and the connection is
+//! closed when the dictation ends. A whole-clip request opens one on demand,
+//! retries once on a fresh one when it fails, and closes it before
+//! returning; a timed request gets one segment spanning the clip.
+//!
+//! The service closes sessions that sit idle, so no connection is kept
+//! between dictations: a reused one would fail the first request of the
+//! next utterance and cost that dictation its live text. Connecting at the
+//! press costs the handshake (a few hundred milliseconds) while the
+//! microphone is already recording, which the live plate absorbs.
 
-use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr};
@@ -25,24 +31,27 @@ use crate::wetype::{Client, Transcript as CloudTranscript};
 /// one answers well inside this.
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 
+/// A live stream's connection is opened at the press, so its handshake must
+/// not hold the engine's queue for long: nothing worth streaming answers in
+/// a few hundred milliseconds on a working network.
+const STREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
 /// Samples per millisecond at the 16 kHz rate every backend receives.
 const SAMPLES_PER_MS: usize = 16;
 
 pub(crate) struct WetypeTranscriber {
     selection: TranscriptionSelection,
-    /// The connection, shared with a live stream that may outlive one
-    /// dictionary call. Kept warm between dictations.
-    client: Arc<Mutex<Option<Client>>>,
+    /// This whole-clip request's connection, opened on demand and closed when
+    /// the request ends. Nothing is kept between uses: the service closes
+    /// idle sessions, so a later request would fail on the dead socket.
+    client: Option<Client>,
 }
 
 impl WetypeTranscriber {
     pub(crate) fn load(selection: &TranscriptionSelection) -> Result<Self> {
-        let client = Arc::new(Mutex::new(None));
-        #[cfg(not(test))]
-        warm(Arc::clone(&client));
         Ok(Self {
             selection: selection.clone(),
-            client,
+            client: None,
         })
     }
 
@@ -124,68 +133,56 @@ impl WetypeTranscriber {
         if samples.is_empty() {
             return Ok(String::new());
         }
-        // Transport errors are common after an idle connection; a stale
-        // socket is replaced and the clip sent once more.
-        match self.attempt(samples) {
+        // A transport error sends the clip once more on a fresh connection;
+        // either way the connection is closed when this request ends.
+        let result = match self.attempt(samples) {
             Ok(transcript) => Ok(final_text(transcript)),
             Err(first) => {
-                self.clear_client();
                 tracing::info!(error = %first, "reconnecting to the WeChat ASR service");
                 self.attempt(samples)
                     .wrap_err_with(|| format!("WeChat ASR failed: {first}"))
                     .map(final_text)
             }
-        }
+        };
+        self.client = None;
+        result
     }
 
     fn attempt(
-        &self,
+        &mut self,
         samples: &[f32],
     ) -> std::result::Result<CloudTranscript, crate::wetype::Error> {
-        let mut guard = self
-            .client
-            .lock()
-            .unwrap_or_else(|error| error.into_inner());
-        if guard.is_none() {
-            *guard = Some(Client::connect_with_timeout(REQUEST_TIMEOUT)?);
+        if self.client.is_none() {
+            self.client = Some(Client::connect_with_timeout(REQUEST_TIMEOUT)?);
         }
-        let result = guard
+        let result = self
+            .client
             .as_mut()
             .expect("the client was connected above")
             .transcribe_f32(samples, None);
         if result.is_err() {
-            *guard = None;
+            self.client = None;
         }
         result
     }
 
-    fn clear_client(&self) {
-        *self
-            .client
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = None;
-    }
-
-    /// Open a live utterance over this backend's connection. The engine
-    /// drives it while the shortcut is held, publishing the service's
-    /// cumulative text for the HUD's live text plate.
+    /// Open a live utterance on a connection of its own. The engine drives it
+    /// while the shortcut is held, publishing the service's cumulative text
+    /// for the HUD's live text plate; the stream closes the connection when
+    /// it ends, so nothing sits idle between dictations.
+    ///
+    /// A connection left in `client` (by a whole-clip request) is deliberately
+    /// not reused: the service closes idle sessions, and the first request on
+    /// a closed one is what would cost this dictation its live text.
     pub(crate) fn open_stream(&self) -> Option<WetypeLive> {
-        {
-            let mut guard = self
-                .client
-                .lock()
-                .unwrap_or_else(|error| error.into_inner());
-            if guard.is_none() {
-                match Client::connect_with_timeout(REQUEST_TIMEOUT) {
-                    Ok(client) => *guard = Some(client),
-                    Err(error) => {
-                        tracing::warn!(%error, "could not connect the WeChat live stream");
-                        return None;
-                    }
-                }
+        let client = match Client::connect_with_timeout(STREAM_CONNECT_TIMEOUT) {
+            Ok(client) => client,
+            Err(error) => {
+                tracing::warn!(%error, "could not connect the WeChat live stream");
+                return None;
             }
-        }
-        match crate::wetype::session::VoiceStream::new(Arc::clone(&self.client)) {
+        };
+        match crate::wetype::session::VoiceStream::new(client) {
             Ok(inner) => Some(WetypeLive { inner }),
             Err(error) => {
                 // The connection itself is still usable for a whole-clip
@@ -195,23 +192,6 @@ impl WetypeTranscriber {
             }
         }
     }
-}
-
-/// Connect once in the background so the first dictation's live stream has a
-/// session instead of paying the handshake at the press. Failures are silent:
-/// the next use connects again.
-#[cfg(not(test))]
-fn warm(client: Arc<Mutex<Option<Client>>>) {
-    let _ = std::thread::Builder::new()
-        .name("wetype-warm".into())
-        .spawn(move || {
-            if let Ok(connected) = Client::connect_with_timeout(REQUEST_TIMEOUT) {
-                let mut guard = client.lock().unwrap_or_else(|error| error.into_inner());
-                if guard.is_none() {
-                    *guard = Some(connected);
-                }
-            }
-        });
 }
 
 fn final_text(transcript: CloudTranscript) -> String {
