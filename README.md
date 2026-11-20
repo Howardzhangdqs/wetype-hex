@@ -17,8 +17,10 @@ runtime is needed at use time.
 ## Status
 
 - **Linux** is the tested target (X11 and wlroots-compatible Wayland).
-- The macOS and Windows code paths still compile, but this fork's backend has
-  only been exercised on Linux.
+- **Windows** builds from the same Rust backend but has not been exercised on a
+  real machine.
+- **macOS** is not supported by this fork yet: the cloud backend is compiled for
+  Linux and Windows only, and the macOS transcriber still expects a local model.
 - The service recognizes **Mandarin Chinese** (with mixed English words).
 - **Automatic 文字整理**: each Linux dictation is run through the service's
   text-tidy model after recognition and before it is pasted, so spoken lists

@@ -1,6 +1,6 @@
 name: Release wetype-hex
 
-# Builds the fork's `hex` binary for Linux, macOS, and Windows and attaches the
+# Builds the fork's `hex` binary for Linux and Windows and attaches the
 # archives to a GitHub release. Dispatch-only: the upstream Release workflow
 # belongs to Anomaly's signing service and is disabled on this fork.
 on:
@@ -37,10 +37,6 @@ jobs:
             os: ubuntu-24.04
             target: linux-x86_64
             archive: tar.gz
-          - label: macOS arm64
-            os: macos-26
-            target: macos-arm64
-            archive: tar.gz
           - label: Windows x86_64
             os: windows-latest
             target: windows-x86_64
@@ -72,10 +68,6 @@ jobs:
             libx11-xcb-dev libfontconfig1-dev libfreetype-dev \
             libxcursor-dev libxi-dev libxrandr-dev libopenblas-dev \
             libegl1-mesa-dev
-
-      - name: Install the Metal toolchain
-        if: runner.os == 'macOS'
-        run: xcrun --sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
       - name: Build
         env:
@@ -129,14 +121,14 @@ jobs:
           tag_name: ${{ inputs.tag }}
           name: wetype-hex ${{ inputs.version }}
           body: |
-            WeChat Input Method cloud dictation for Linux, macOS, and Windows.
+            WeChat Input Method cloud dictation for the desktop.
 
-            Linux is the tested target. The macOS and Windows builds compile and
-            share the same Rust backend, but this fork has only been exercised on
-            Linux.
+            Linux is the tested target. Windows builds from the same Rust
+            backend but has not been exercised on a real machine. macOS is not
+            supported by this fork yet: the cloud backend compiles for Linux and
+            Windows only.
 
             Download the archive for your platform, unpack it, and run
-            `./wetype-hex`. macOS may need
-            `xattr -dr com.apple.quarantine wetype-hex` before the first run.
+            `wetype-hex`.
           files: dist/*
           fail_on_unmatched_files: true
