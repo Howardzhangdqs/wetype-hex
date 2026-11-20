@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use tungstenite::WebSocket;
 use tungstenite::client::IntoClientRequest;
@@ -28,6 +28,10 @@ use super::{
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(20);
 /// Delay between end-of-utterance polls.
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
+/// Overall time the end-of-utterance polls may take. Each poll waits up to a
+/// read timeout, so an unbounded count can outlast the engine's stream-finish
+/// deadline on a slow link.
+const FINISH_POLL_BUDGET: Duration = Duration::from_secs(8);
 /// Maximum number of end-of-utterance polls.
 const MAX_POLLS: usize = 8;
 /// Frame/message size cap advertised to the WebSocket layer.
@@ -665,9 +669,11 @@ impl VoiceStream {
         // Always mark the end with one request, even when the last feed sent
         // a full batch: the polls alone would add a needless 250 ms.
         let (mut text, mut polished) = self.send(true)?;
-        // The engine gives a stream 1.5 s to finish; four polls stay inside.
+        // The engine gives a stream 12 s to finish; stop polling inside it even
+        // when a slow link makes each poll eat a read timeout.
+        let started = Instant::now();
         for _ in 0..4 {
-            if !polished.is_empty() {
+            if !polished.is_empty() || started.elapsed() >= FINISH_POLL_BUDGET {
                 break;
             }
             std::thread::sleep(POLL_INTERVAL);

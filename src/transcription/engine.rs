@@ -36,9 +36,12 @@ pub(crate) type Offline = Box<dyn FnOnce(&mut Model, Vec<f32>) -> Result<String,
 /// `None` instead of the model when dictation claimed the engine first.
 pub(crate) type Background = Box<dyn FnOnce(Option<&mut Model>) + Send>;
 
-/// A healthy finish decodes at most a couple of seconds of buffered audio.
-/// Past this the stream is aborted and the clip is transcribed offline.
-const STREAM_FINISH_DEADLINE: Duration = Duration::from_millis(1_500);
+/// A local finish decodes at most a couple of seconds of buffered audio, but
+/// the cloud backend's finish is a network round trip plus end-of-utterance
+/// polls: it lands around a second on a healthy link and more when the service
+/// is slow. Past this the stream is aborted and the clip is transcribed
+/// offline.
+const STREAM_FINISH_DEADLINE: Duration = Duration::from_secs(12);
 /// Audio fed past the clip's trimmed end (a release handled late) that the
 /// stream may still keep. Beyond it, the offline clip is authoritative.
 const MAX_OVERFED_SAMPLES: usize = 16_000 / 4;
