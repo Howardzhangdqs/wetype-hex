@@ -38,7 +38,7 @@ jobs:
             target: linux-x86_64
             archive: tar.gz
           - label: macOS arm64
-            os: macos-14
+            os: macos-15
             target: macos-arm64
             archive: tar.gz
           - label: Windows x86_64
