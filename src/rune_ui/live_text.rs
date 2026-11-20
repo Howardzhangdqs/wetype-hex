@@ -44,6 +44,25 @@ pub(crate) struct Plate {
     /// Whether the overlay is on screen. Every change happens in an overlay
     /// update, in queue order, so a queued hide cannot race a newer notice.
     shown: bool,
+    /// A short state line ("listening", "recognizing", "no speech") shown
+    /// beside the HUD while there are no words to show.
+    status: Option<String>,
+    /// What kind of state that line is, so a cancelled capture clears only
+    /// its own "listening" and not a result it just announced.
+    status_kind: StatusKind,
+    /// The status describes what happens to the capture after it ended, so it
+    /// replaces the last words instead of waiting for them to disappear.
+    status_over_words: bool,
+}
+
+/// Which state a plate's status line reports.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum StatusKind {
+    /// The capture is recording and has no words yet.
+    #[default]
+    Listening,
+    /// What happened to a capture: recognizing, no speech, failed.
+    Result,
 }
 
 impl Plate {
@@ -67,13 +86,42 @@ impl Plate {
         self.failure.take().is_some()
     }
 
+    fn set_status(&mut self, message: String, kind: StatusKind, over_words: bool) {
+        if kind == StatusKind::Listening && !self.live {
+            // A new capture starts a fresh plate: the words left by the last
+            // dictation must never show as if this one said them.
+            self.stable.clear();
+            self.tentative.clear();
+            self.live = false;
+        }
+        self.status = Some(message);
+        self.status_kind = kind;
+        self.status_over_words = over_words;
+    }
+
+    fn clear_status(&mut self) -> bool {
+        self.status_kind = StatusKind::Listening;
+        self.status_over_words = false;
+        self.status.take().is_some()
+    }
+
+    /// Clears only a capture's "listening" line, leaving a result it just
+    /// announced ("no speech") on the plate.
+    fn clear_listening(&mut self) -> bool {
+        if self.status_kind != StatusKind::Listening {
+            return false;
+        }
+        self.clear_status()
+    }
+
     fn mark_shown(&mut self, shown: bool) {
         self.shown = shown;
     }
 
-    /// Nothing live or failed remains to justify the plate.
+    /// Nothing live, failed, or reporting a state remains to justify the
+    /// plate.
     fn should_hide(&self) -> bool {
-        !self.live && self.failure.is_none()
+        !self.live && self.failure.is_none() && self.status.is_none()
     }
 }
 
@@ -307,6 +355,71 @@ pub(crate) fn dismiss_failure() {
     dismiss_notice();
 }
 
+/// Shows a short state line beside the HUD while the capture is recording but
+/// has no words yet ("聆听中…"). Live words replace it as soon as they arrive.
+pub(crate) fn show_status(message: &str) {
+    show_status_with(message, StatusKind::Listening);
+}
+
+/// Shows a state line for what happens after the capture ("识别中…", "没有
+/// 听到声音"), replacing the words left from it until it is cleared or the
+/// next capture starts.
+pub(crate) fn show_busy_status(message: &str) {
+    show_status_with(message, StatusKind::Result);
+}
+
+/// Hides a status line, and the plate when it was the only thing on it.
+pub(crate) fn clear_status() {
+    let Some(overlay) = LIVE.get() else {
+        return;
+    };
+    let handle = overlay.clone();
+    overlay.update(move |plate, tx| {
+        if plate.clear_status() {
+            tx.instant();
+        }
+        if plate.should_hide() && plate.shown {
+            handle.fade_out(FADE);
+            plate.mark_shown(false);
+        }
+    });
+}
+
+/// Hides a capture's "listening" line at once, leaving a result line ("没有
+/// 听到声音") that replaced it.
+pub(crate) fn clear_listening() {
+    let Some(overlay) = LIVE.get() else {
+        return;
+    };
+    let handle = overlay.clone();
+    overlay.update(move |plate, tx| {
+        if plate.clear_listening() {
+            tx.instant();
+        }
+        if plate.should_hide() && plate.shown {
+            handle.fade_out(FADE);
+            plate.mark_shown(false);
+        }
+    });
+}
+
+fn show_status_with(message: &str, kind: StatusKind) {
+    let (Some(overlay), Some(place)) = (LIVE.get(), PLACE.get().copied()) else {
+        return;
+    };
+    let message = message.to_owned();
+    let handle = overlay.clone();
+    overlay.update(move |plate, tx| {
+        plate.set_status(message, kind, kind == StatusKind::Result);
+        tx.instant();
+        if !plate.shown {
+            place().apply(&handle);
+            handle.show();
+            plate.mark_shown(true);
+        }
+    });
+}
+
 fn dismiss_notice() {
     let cleared = { notice().capture_started() };
     if !cleared {
@@ -448,7 +561,23 @@ fn view(plate_state: &Plate, cx: &mut Cx<Plate>) -> El {
             .color(p.danger());
         return root.child(plate(&p, line));
     }
-    if plate_state.stable.trim().is_empty() && plate_state.tentative.trim().is_empty() {
+    let blank =
+        plate_state.stable.trim().is_empty() && plate_state.tentative.trim().is_empty();
+    // A capture's own state ("listening") waits behind its live words; a
+    // state from after it ended ("recognizing") replaces them.
+    if let Some(status) = plate_state
+        .status
+        .as_ref()
+        .filter(|_| plate_state.status_over_words || blank)
+    {
+        let line = text(status.clone())
+            .key("status")
+            .truncate()
+            .font(p.k.ty.ui)
+            .color(p.faint());
+        return root.child(plate(&p, line));
+    }
+    if blank {
         return root;
     }
     // The newest words stay in view: the start gives way with "…".

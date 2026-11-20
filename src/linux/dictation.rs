@@ -612,6 +612,7 @@ pub(crate) fn run(
                 by_shortcut,
                 ..
             } = finishing.take().expect("a release is finishing");
+            let pending_before = pending;
             let silent = submit_capture(
                 &mut capture,
                 release.ended_at(),
@@ -626,6 +627,12 @@ pub(crate) fn run(
                 &mut active_typing,
                 context,
             )?;
+            if pending > pending_before {
+                indicator.transcribing();
+            }
+            if silent {
+                indicator.no_speech();
+            }
             if silent
                 && reopen_silent_stream(
                     &mut input,

@@ -72,6 +72,7 @@ impl LinuxIndicator {
     pub(crate) fn update(&mut self, recording: bool, pending: usize) {
         if recording && !self.recording {
             self.send(HudEvent::Started);
+            crate::rune_ui::live_text::show_status("聆听中…");
         }
         let submitted = pending > self.jobs.len();
         while pending > self.jobs.len() {
@@ -81,8 +82,12 @@ impl LinuxIndicator {
                 job_id: self.next_job,
             });
         }
+        if submitted {
+            crate::rune_ui::live_text::show_busy_status("识别中…");
+        }
         if !recording && self.recording && !submitted {
             self.send(HudEvent::Cancelled);
+            crate::rune_ui::live_text::clear_listening();
         }
         // Dictations that ended without `finished` (the listener stopping).
         while pending < self.jobs.len() {
@@ -96,6 +101,7 @@ impl LinuxIndicator {
     /// The oldest submitted dictation finished: pasted, or failed with why.
     pub(crate) fn finished(&mut self, failure: Option<&str>) {
         if let Some(job_id) = self.jobs.pop_front() {
+            crate::rune_ui::live_text::clear_status();
             self.send(if let Some(message) = failure {
                 HudEvent::JobFailed {
                     job_id,
@@ -113,6 +119,17 @@ impl LinuxIndicator {
         if let Some(job_id) = self.jobs.pop_front() {
             self.send(HudEvent::JobCancelled { job_id });
         }
+        crate::rune_ui::live_text::show_busy_status("没有听到声音");
+    }
+
+    /// The capture had no speech, so nothing was submitted to transcribe.
+    pub(crate) fn no_speech(&mut self) {
+        crate::rune_ui::live_text::show_busy_status("没有听到声音");
+    }
+
+    /// A capture was submitted for transcription.
+    pub(crate) fn transcribing(&mut self) {
+        crate::rune_ui::live_text::show_busy_status("识别中…");
     }
 
     /// Captured audio while recording, for the level the HUD shows.
@@ -126,6 +143,7 @@ impl LinuxIndicator {
 impl Drop for LinuxIndicator {
     fn drop(&mut self) {
         self.send(HudEvent::Reset);
+        crate::rune_ui::live_text::clear_status();
     }
 }
 
